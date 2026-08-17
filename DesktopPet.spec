@@ -1,17 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.building.datastruct import Tree
 
 # edge-tts + its async HTTP stack need their submodules pulled in explicitly.
 _tts_imports = (collect_submodules('edge_tts')
                 + collect_submodules('aiohttp')
                 + ['certifi'])
 
+# 角色资源随包发布，但**排除敏感/本地文件**：ai_config.json 可能含有 API key，
+# .claude 等本地工具状态也不该进发布物。exe 可被反解提取内部文件，打进去=公开。
+_characters = Tree('characters', prefix='characters',
+                   excludes=['*/ai_config.json', '*/.claude/*'])
+
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('characters', 'characters'), ('app.ico', '.')],
+    datas=[_characters, ('app.ico', '.')],
     hiddenimports=['cv2', 'PyQt5.QtMultimedia'] + _tts_imports + ['psutil', 'PIL.ImageGrab', 'pet.memory', 'pet.ai_settings', 'pet.theme', 'pet.timers'],
     hookspath=[],
     hooksconfig={},

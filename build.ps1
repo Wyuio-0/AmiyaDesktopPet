@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 # 桌面宠物 —— 一键构建脚本
 #
 # 作用：重新用 PyInstaller 打包 DesktopPet.exe，同步角色资源（阿米娅 / 圣聆初雪
@@ -47,9 +47,14 @@ if (-not (Test-Path $ExePath)) { throw "打包结束但未找到 $ExePath。" }
 # --- 3. 同步角色资源到 dist\characters -------------------------------------
 # main.py 在打包运行时优先读取 exe 旁边的 characters\，
 # 所以每次构建都用源目录覆盖它，保证角色/配置是最新的。
+# **排除敏感文件**：ai_config.json 可能含有 API key；.claude 是本地工具状态。
 Write-Host '==> [2/4] 同步角色资源...' -ForegroundColor Yellow
 if (Test-Path $CharDst) { Remove-Item $CharDst -Recurse -Force }
 Copy-Item $CharSrc $CharDst -Recurse -Force
+Get-ChildItem $CharDst -Recurse -Filter 'ai_config.json' -File |
+    Remove-Item -Force -ErrorAction SilentlyContinue
+Get-ChildItem $CharDst -Recurse -Directory -Filter '.claude' |
+    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
 $chars = Get-ChildItem $CharDst -Directory |
     Where-Object { Test-Path (Join-Path $_.FullName 'config.json') } |
     Select-Object -ExpandProperty Name
