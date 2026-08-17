@@ -1,0 +1,125 @@
+{
+  "name": "Amiya",
+  "display_name": "阿米娅",
+  "description": "Amiya from Arknights",
+  "scale": 0.765,
+  "transparent_color": "#FF00FF",
+  "actions": {
+    "start": {
+      "folder": "start",
+      "interval": 25,
+      "loop": false,
+      "next": "idle"
+    },
+    "idle": {
+      "folder": "idle",
+      "interval": 25,
+      "loop": true,
+      "random": true
+    },
+    "click": {
+      "folder": "click",
+      "interval": 20,
+      "loop": false,
+      "random": true,
+      "next": "idle"
+    },
+    "drag": {
+      "folder": "drag",
+      "interval": 25,
+      "loop": true,
+      "random": false
+    },
+    "greet": {
+      "folder": "greet",
+      "interval": 25,
+      "loop": false,
+      "random": true,
+      "next": "idle"
+    },
+    "move": {
+      "folder": "move",
+      "interval": 30,
+      "loop": true,
+      "random": false
+    },
+    "sit": {
+      "folder": "sit",
+      "interval": 25,
+      "loop": true,
+      "random": false
+    },
+    "sleep": {
+      "folder": "sleep",
+      "interval": 30,
+      "loop": true,
+      "random": false
+    },
+    "skill_begin": {
+      "folder": "skill_begin",
+      "interval": 20,
+      "loop": false,
+      "next": "skill_loop"
+    },
+    "skill_loop": {
+      "folder": "skill_loop",
+      "interval": 20,
+      "loop": false,
+      "loop_count": 2,
+      "next": "idle"
+    }
+  },
+  "interactions": {
+    "on_click": "click",
+    "on_drag": "move",
+    "on_double_click": "greet"
+  },
+  "rest": {
+    "idle_to_sit": [300, 600],
+    "sit_to_sleep": [3600, 7200]
+  },
+  "greetings": {
+    "enabled": true,
+    "morning": {
+      "start": "06:00",
+      "end": "09:30",
+      "lines": [
+        "早安，博士。新的一天，今天也请多指教。",
+        "博士，早上好！睡得还好吗？罗德岛已经醒来了。",
+        "早安，博士。要先来杯热饮再开始工作吗？"
+      ]
+    },
+    "noon": {
+      "start": "12:00",
+      "end": "13:30",
+      "lines": [
+        "博士，到午休时间了，先放下工作吃点东西吧。",
+        "已经中午了，博士。别忘了休息，午后才有精神。",
+        "博士，午饭时间到咯，稍微眯一会儿会更好哦。"
+      ]
+    },
+    "late_night": {
+      "start": "23:30",
+      "end": "03:00",
+      "lines": [
+        "博士，已经很晚了，早点休息吧，身体要紧。",
+        "夜深了，博士……阿米娅会守着，您先去睡吧。",
+        "这么晚还没睡吗，博士？明天的作战还需要您呢。"
+      ]
+    }
+  },
+  "voice": {
+    "enabled": true,
+    "volume": 0.7,
+    "tts": {
+      "enabled": true,
+      "use_clone": true,
+      "clone_autostart": true,
+      "clone_dir": "voiceclone",
+      "voice": "zh-CN-XiaoyiNeural",
+      "rate": "-8%",
+      "synth_volume": "+0%",
+      "pitch": "+10Hz"
+    }
+  }
+}

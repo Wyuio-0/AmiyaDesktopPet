@@ -1,0 +1,7 @@
+{
+  "base_url": "https://api.moonshot.cn",
+  "model": "moonshot-v1-8k",
+  "api_key": "",
+  "temperature": 0.8,
+  "allow_actions": true
+}

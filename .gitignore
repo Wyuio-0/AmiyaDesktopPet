@@ -1,0 +1,37 @@
+# Local voiceclone junction (do not commit the 14 GB project)
+voiceclone/
+
+# Build output
+build/
+dist/
+
+# Installer staging & output
+installer_staging/
+installer.7z
+DesktopPet_Setup.exe
+DesktopPet_v1.0.0.7z.*
+build_installer.bat
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.spec.bak
+
+# AI config (contains API key — keep local only)
+**/ai_config.json
+
+# Personal course schedule / timetable data (contains PII — never commit)
+kebiao.json
+schedule.json
+schedule_raw.json
+*_schedule*.json
+
+# Local scratch / audit scripts
+scratch_*.py
+scratch_*.json
+
+# Logs & env
+*.log
+.env
+.env.*

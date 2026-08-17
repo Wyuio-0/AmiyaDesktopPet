@@ -1,0 +1,133 @@
+{
+  "name": "圣聆初雪",
+  "display_name": "圣聆初雪",
+  "description": "圣聆初雪 from Arknights",
+  "scale": 0.765,
+  "transparent_color": "#FF00FF",
+  "actions": {
+    "start": {
+      "folder": "start",
+      "interval": 25,
+      "loop": false,
+      "next": "idle"
+    },
+    "idle": {
+      "folder": "idle",
+      "interval": 25,
+      "loop": true,
+      "random": true
+    },
+    "click": {
+      "folder": "click",
+      "interval": 20,
+      "loop": false,
+      "random": true,
+      "next": "idle"
+    },
+    "drag": {
+      "folder": "drag",
+      "interval": 25,
+      "loop": true,
+      "random": false
+    },
+    "greet": {
+      "folder": "greet",
+      "interval": 20,
+      "loop": false,
+      "random": true,
+      "next": "idle"
+    },
+    "move": {
+      "folder": "move",
+      "interval": 25,
+      "loop": true,
+      "random": false
+    },
+    "sit": {
+      "folder": "sit",
+      "interval": 25,
+      "loop": true,
+      "random": false
+    },
+    "sleep": {
+      "folder": "sleep",
+      "interval": 30,
+      "loop": true,
+      "random": false
+    },
+    "skill_begin": {
+      "folder": "skill_begin",
+      "interval": 20,
+      "loop": false,
+      "loop_count": 1,
+      "next": "idle"
+    }
+  },
+  "interactions": {
+    "on_click": "click",
+    "on_drag": "move",
+    "on_double_click": "greet"
+  },
+  "rest": {
+    "idle_to_sit": [
+      300,
+      600
+    ],
+    "sit_to_sleep": [
+      3600,
+      7200
+    ]
+  },
+  "greetings": {
+    "enabled": true,
+    "morning": {
+      "start": "06:00",
+      "end": "09:30",
+      "lines": [
+        "早安，博士。愿今日的钟声也为您带来安宁。",
+        "博士，早上好。请让我陪您开启今天的工作。",
+        "晨光已经到了，博士。先整理好心情，再出发吧。"
+      ]
+    },
+    "noon": {
+      "start": "12:00",
+      "end": "13:30",
+      "lines": [
+        "博士，午休时间到了。请暂时放下事务，照顾好自己。",
+        "已经中午了，博士。休息并不是停下，而是为了更稳地前行。",
+        "博士，请用餐吧。过度勉强自己，我会担心的。"
+      ]
+    },
+    "late_night": {
+      "start": "23:30",
+      "end": "03:00",
+      "lines": [
+        "夜已经很深了，博士。愿您今晚能睡得安稳。",
+        "博士，请休息吧。剩下的事务，明日再处理也来得及。",
+        "深夜的静默不该只属于工作。博士，请早点睡。"
+      ]
+    }
+  },
+  "persona": "你是《明日方舟》中的圣聆初雪，喀兰贸易出身的圣女。你说话温和、庄重、克制，带着祈愿般的安定感。你称呼对方为「博士」，自称「我」。回答简洁自然，一般一到三句话，只用中文，不使用括号动作描写或表情符号。当博士需要时，你可以调用提供的工具帮他操作电脑；能用工具完成的请求必须先调用工具，再自然说明结果。",
+  "fallback": [
+    "博士，愿您今日也能平安顺遂。",
+    "若您需要我，请尽管开口。",
+    "请不要过分勉强自己，博士。片刻休息也是必要的。",
+    "我会在这里陪伴您，直到风雪停歇。",
+    "愿铃声为您带来清明，也带来前行的勇气。"
+  ],
+  "voice": {
+    "enabled": true,
+    "volume": 0.7,
+    "tts": {
+      "enabled": true,
+      "use_clone": true,
+      "clone_autostart": true,
+      "clone_dir": "D:\\Dev\\voiceclone",
+      "voice": "zh-CN-XiaoxiaoNeural",
+      "rate": "-5%",
+      "synth_volume": "+0%",
+      "pitch": "+0Hz"
+    }
+  }
+}

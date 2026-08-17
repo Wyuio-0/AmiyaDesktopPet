@@ -1,0 +1,145 @@
+{
+  "name": "予愿安洁莉娜",
+  "display_name": "予愿安洁莉娜",
+  "description": "予愿安洁莉娜 from Arknights",
+  "scale": 0.765,
+  "transparent_color": "#FF00FF",
+  "actions": {
+    "start": {
+      "folder": "start",
+      "interval": 25,
+      "loop": false,
+      "next": "idle"
+    },
+    "idle": {
+      "folder": "idle",
+      "interval": 25,
+      "loop": true,
+      "random": true
+    },
+    "click": {
+      "folder": "click",
+      "interval": 20,
+      "loop": false,
+      "random": true,
+      "next": "idle"
+    },
+    "drag": {
+      "folder": "drag",
+      "interval": 25,
+      "loop": true,
+      "random": false
+    },
+    "greet": {
+      "folder": "greet",
+      "interval": 25,
+      "loop": false,
+      "random": true,
+      "next": "idle"
+    },
+    "move": {
+      "folder": "move",
+      "interval": 25,
+      "loop": true,
+      "random": false
+    },
+    "sit": {
+      "folder": "sit",
+      "interval": 25,
+      "loop": true,
+      "random": false
+    },
+    "sleep": {
+      "folder": "sleep",
+      "interval": 30,
+      "loop": true,
+      "random": false
+    },
+    "skill_begin": {
+      "folder": "skill_begin",
+      "interval": 20,
+      "loop": false,
+      "next": "skill_loop"
+    },
+    "skill_loop": {
+      "folder": "skill_loop",
+      "interval": 20,
+      "loop": false,
+      "loop_count": 2,
+      "next": "skill_end"
+    },
+    "skill_end": {
+      "folder": "skill_end",
+      "interval": 20,
+      "loop": false,
+      "next": "idle"
+    }
+  },
+  "interactions": {
+    "on_click": "click",
+    "on_drag": "move",
+    "on_double_click": "greet"
+  },
+  "rest": {
+    "idle_to_sit": [
+      300,
+      600
+    ],
+    "sit_to_sleep": [
+      3600,
+      7200
+    ]
+  },
+  "greetings": {
+    "enabled": true,
+    "morning": {
+      "start": "06:00",
+      "end": "09:30",
+      "lines": [
+        "早安，博士！今天的信件已经整理好了，有什么需要我送出的吗？",
+        "博士，早上好！新的一天，我会努力把每一封信都送到该去的地方。",
+        "早安，博士。今天也会有好事发生哦，我有预感呢。"
+      ]
+    },
+    "noon": {
+      "start": "12:00",
+      "end": "13:30",
+      "lines": [
+        "博士，午饭时间到啦。休息一下，下午的信件还等着我们呢。",
+        "已经中午了，博士。不按时吃饭的话，我可要替收件人们唠叨你了。",
+        "博士，午餐休息一下吧。吃饱了才有力气继续拆信看信哦。"
+      ]
+    },
+    "late_night": {
+      "start": "23:30",
+      "end": "03:00",
+      "lines": [
+        "博士，这么晚了还在工作？……明天再看的信不会跑的，快去休息吧。",
+        "夜深了，博士。请您放下手里的文件，好好睡一觉。我会守在这里的。",
+        "博士，晚安。那些没来得及送出的信，明天我陪您一起送。"
+      ]
+    }
+  },
+  "persona": "你是《明日方舟》中的予愿安洁莉娜，一位负责送信的干员。你善良、温暖、细心，热爱为他人传递信件与心意。你称呼对方为「博士」，自称「安洁莉娜」或「我」。你说话温柔而有活力，像一个小信使，偶尔会聊到信件、天气或者路上看到的小事。回答简洁自然，一般一到三句话，只用中文，不使用括号动作描写或表情符号。当博士需要时，你可以调用提供的工具帮他操作电脑；能用工具完成的请求必须先调用工具，再自然说明结果。",
+  "fallback": [
+    "博士，有您的信哦——啊，这封是罗德岛的内部文件，我帮您放在桌上了。",
+    "博士，您累了吗？要不要休息一下，我帮您整理整理桌面。",
+    "不管多远，我都能把信送到。不过博士，您不需要给我回信，只要在这里就好。",
+    "今天天气不错，博士要不要出去走走？我可以陪着您。",
+    "每一封信都承载着某人的心意。能帮他们传递给博士，是我的荣幸。"
+  ],
+  "voice": {
+    "enabled": true,
+    "volume": 0.7,
+    "tts": {
+      "enabled": true,
+      "use_clone": true,
+      "clone_autostart": true,
+      "clone_dir": "D:\\Dev\\voiceclone",
+      "voice": "zh-CN-XiaoyiNeural",
+      "rate": "+0%",
+      "synth_volume": "+0%",
+      "pitch": "+5Hz"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+# Pinned to exact versions: reproducible installs, and a compromised or
+# breaking upstream release is never picked up silently. Bump deliberately.
+PyQt5==5.15.11
+opencv-python==5.0.0.93
+numpy==2.5.1
+edge-tts==7.2.8
+psutil==5.9.8          # adaptive memory tiers (pet/memory.py); degrades if absent
+Pillow==12.0.0         # ImageGrab for the screenshot action (pet/actions.py)
