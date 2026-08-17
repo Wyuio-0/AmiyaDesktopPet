@@ -35,3 +35,7 @@ scratch_*.json
 *.log
 .env
 .env.*
+
+# Local AI/IDE tool state (may contain session data — never commit)
+.agents/
+.claude/
