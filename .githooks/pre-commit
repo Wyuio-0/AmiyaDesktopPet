@@ -1,0 +1,15 @@
+#!/bin/sh
+# pre-commit 钩子：提交前扫描暂存区，发现密钥/个人信息即阻止提交。
+# 启用：git config core.hooksPath .githooks
+# 规则见 tools/check_secrets.py（可自行扩展）。
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -z "$ROOT" ]; then
+    exit 0
+fi
+PY=$(command -v python 2>/dev/null || command -v python3 2>/dev/null || command -v py 2>/dev/null)
+if [ -z "$PY" ]; then
+    echo "check_secrets: 未找到 python，跳过安全检查" >&2
+    exit 0
+fi
+"$PY" "$ROOT/tools/check_secrets.py"
+exit $?
