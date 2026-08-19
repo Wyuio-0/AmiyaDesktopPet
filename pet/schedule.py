@@ -320,7 +320,7 @@ class Schedule:
         """整张课表文本（按星期排），week_no 用于标注单双周实际是否上课。"""
         lines = []
         for wd in range(1, 8):
-            courses = self.courses_on(wd, week_no)
+            courses = self.courses_on(wd, None)   # 不过滤周次，才能标出"本周不上"
             if not courses:
                 continue
             lines.append(WEEKDAY_NAMES[wd])

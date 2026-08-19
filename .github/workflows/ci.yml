@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  test:
+    name: Test & security scan
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Security scan (full tree)
+        run: python tools/check_secrets.py --all
+      - name: Run tests
+        run: python -m pytest
+
+  build:
+    name: Build exe
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.21.0
+      - name: Build DesktopPet.exe
+        run: python -m PyInstaller --noconfirm --clean DesktopPet.spec
+      - name: Verify no secrets leaked into dist
+        shell: pwsh
+        run: |
+          if (Test-Path dist\characters\amiya\ai_config.json) {
+            Write-Error "ai_config.json leaked into dist!"
+            exit 1
+          }
+          if (Get-ChildItem dist\characters -Recurse -Directory -Filter ".claude") {
+            Write-Error ".claude leaked into dist!"
+            exit 1
+          }
+          Write-Host "dist clean"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DesktopPet-exe
+          path: dist/DesktopPet.exe
+          if-no-files-found: error
+
+  release:
+    name: Release (tag)
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller==6.21.0
+      - name: Build DesktopPet.exe
+        run: python -m PyInstaller --noconfirm --clean DesktopPet.spec
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/DesktopPet.exe
+          generate_release_notes: true

@@ -377,8 +377,14 @@ token 首次运行时自动生成，存在 `%APPDATA%\AmiyaPet\tts_token`，宠�
 ├── main.py                  # 入口
 ├── DesktopPet.spec          # PyInstaller 打包配置
 ├── build.bat / build.ps1    # 构建脚本
-├── requirements.txt         # Python 依赖
+├── requirements.txt         # 运行依赖（精确锁定）
+├── requirements-dev.txt     # 开发/测试依赖（pytest）
+├── pytest.ini               # pytest 配置
 ├── app.ico                  # 应用图标
+├── LICENSE                  # MIT License
+├── .githooks/               # pre-commit 安全钩子（密钥/个人信息扫描）
+├── .github/workflows/       # GitHub Actions CI（测试 + 构建 + 自动发布）
+├── tests/                   # pytest 测试套件（schedule/tasks/ocr/frames/安全规则）
 ├── pet/                     # 核心模块
 │   ├── window.py            # 主窗口（动画播放 / 交互 / 生命周期）
 │   ├── frames.py            # WebM 解码 + 透明抠图（边界背景 + 闭合背景缝）
@@ -407,6 +413,27 @@ token 首次运行时自动生成，存在 `%APPDATA%\AmiyaPet\tts_token`，宠�
     ├── amiya/               #   阿米娅（默认）
     ├── shenglinchuxue/      #   圣聆初雪
     └── yuyuananjielina/     #   予愿安洁莉娜
+```
+
+## 🧪 测试与 CI
+
+### 本地跑测试
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest          # 全部测试
+python -m pytest tests/test_tasks.py -k parse   # 只跑某个文件/关键字
+```
+
+测试覆盖：课表解析与查询、待办中文日期解析与持久化、抠图算法、OCR 后端降级、安全扫描规则。CI（GitHub Actions）在每次 push 自动运行：**安全扫描 → 测试 → 构建 exe → 校验 dist 无泄露**；打 `v*` 标签时自动发布 Release（附 exe）。
+
+### 安全钩子
+
+`.githooks/pre-commit` 在每次提交前扫描暂存区，发现 API key / 课表数据 / `ai_config.json` 等即阻止提交：
+
+```bash
+git config core.hooksPath .githooks   # 启用（克隆后执行一次）
+python tools/check_secrets.py --all   # 手动全量扫描整个工作区
 ```
 
 ## 🔍 透明处理

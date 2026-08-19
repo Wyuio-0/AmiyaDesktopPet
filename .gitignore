@@ -17,6 +17,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.spec.bak
+.pytest_cache/
+.verify_tmp/
 
 # AI config (contains API key — keep local only)
 **/ai_config.json
