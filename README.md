@@ -89,7 +89,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 
 ```json
 {
-  "api_key": "sk-你的key",
+  "api_key": "",
   "base_url": "https://api.deepseek.com",
   "model": "deepseek-chat",
   "temperature": 0.8,
@@ -100,7 +100,7 @@ powershell -ExecutionPolicy Bypass -File build.ps1
 或者通过环境变量（优先级更高）：
 
 ```bash
-set PET_AI_KEY=sk-你的key
+set PET_AI_KEY=your_api_key
 set PET_AI_BASE=https://api.deepseek.com      # 可选
 set PET_AI_MODEL=deepseek-chat                # 可选
 ```
