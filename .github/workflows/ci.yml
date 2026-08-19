@@ -63,7 +63,7 @@ jobs:
           }
           Write-Host "dist clean"
       - name: Upload artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: DesktopPet-exe
           path: dist/DesktopPet.exe
