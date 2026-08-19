@@ -15,12 +15,15 @@ from .character import Character
 from .chat import InputBar, ReplyWorker, SpeechBubble
 from .frames import key_frame
 from .hotkey import GlobalHotkey
+from .ocr import OcrError, ocr_image, summarize_ai
+from .region_select import RegionSelect
 from .schedule import Schedule
 from .settings import Settings
 from .tasks import Tasks
 from .tasks_ui import TaskDialog, TaskListDialog
 from .timers import CountdownBadge, DurationDialog, PomodoroDialog
 from .translate import TranslationPopup, TranslateWorker
+from .translate import _translate_via_ai, _translate_via_google
 from .voice import VoicePlayer
 from . import actions, memory, schedule, theme, translate, tts
 
@@ -50,6 +53,46 @@ class CloneStateProbe(QtCore.QThread):
 
     def run(self):
         tts.refresh_clone_state()
+
+
+class OcrWorker(QtCore.QThread):
+    """截图 OCR + 翻译/总结，跑在后台线程，完成后经信号回 UI。
+
+    done(text, result, error)：text 为识别出的原文，result 为译文/总结；
+    error 非空表示失败（此时 text/result 为空）。
+    """
+
+    done = QtCore.pyqtSignal(str, str, str)
+
+    def __init__(self, image, brain, mode, parent=None):
+        super().__init__(parent)
+        self._image = image
+        self._brain = brain
+        self._cfg = brain.cfg if brain else None
+        self._mode = mode   # 'translate' | 'summarize'
+
+    def run(self):
+        try:
+            text, _ = ocr_image(self._image, self._cfg)
+        except OcrError as e:
+            self.done.emit("", "", str(e))
+            return
+        text = (text or "").strip()
+        if not text:
+            self.done.emit("", "", "没有识别到文字，换个区域试试。")
+            return
+        try:
+            if self._mode == "translate":
+                result = (_translate_via_ai(self._brain, text)
+                          or _translate_via_google(text))
+                if not result:
+                    self.done.emit(text, "", "翻译失败：AI 与 Google 均不可用。")
+                    return
+                self.done.emit(text, result, "")
+            else:
+                self.done.emit(text, summarize_ai(self._cfg, text), "")
+        except Exception as e:
+            self.done.emit(text, "", "处理失败：%s" % type(e).__name__)
 
 
 class PetWindow(QtWidgets.QWidget):
@@ -680,6 +723,10 @@ class PetWindow(QtWidgets.QWidget):
         # Translation hotkey — reads clipboard and translates (Win only).
         self._translate_hotkey = GlobalHotkey(int(self.winId()), "alt+t", self)
         self._translate_hotkey.activated.connect(self._translate_clipboard)
+        # OCR hotkey — region screenshot -> translate (Win only).
+        self._ocr_hotkey = GlobalHotkey(int(self.winId()), "alt+s", self)
+        self._ocr_hotkey.activated.connect(lambda: self._ocr_flow("translate"))
+        self._ocr_worker = None
 
     def _toggle_chat(self):
         """Hotkey action: pop the input if hidden, else dismiss it."""
@@ -720,6 +767,55 @@ class PetWindow(QtWidgets.QWidget):
         self.bubble.hide()
         rect = self._chat_anchor or self._body_rect()
         self.trans_popup.show_translation(source, translated, rect)
+
+    # ------------------------------------------------------------------ #
+    # OCR screenshot (region select -> recognize -> translate/summarize)   #
+    # ------------------------------------------------------------------ #
+
+    def _ocr_flow(self, mode):
+        """全屏截图 -> 拖拽框选区域 -> OCR -> 翻译/总结（后台线程）。"""
+        self._ocr_mode = mode
+        try:
+            from PIL import ImageGrab
+            img = ImageGrab.grab()
+        except Exception as e:
+            self.raise_()
+            self.bubble.say("截图失败：%s" % type(e).__name__, self._body_rect())
+            return
+        sel = RegionSelect(img, self.screen().geometry())
+        sel.selected.connect(self._on_ocr_region)
+        sel.cancelled.connect(sel.close)
+        sel.show()
+        sel.raise_()
+        sel.activateWindow()
+
+    def _on_ocr_region(self, crop):
+        if self._ocr_worker is not None and self._ocr_worker.isRunning():
+            return
+        self.bubble.say("正在识别…", self._body_rect())
+        self._ocr_worker = OcrWorker(crop, self.brain, self._ocr_mode,
+                                     parent=self)
+        self._ocr_worker.done.connect(self._on_ocr_done)
+        self._ocr_worker.start()
+
+    def _on_ocr_done(self, text, result, error):
+        self.bubble.hide()
+        if error:
+            self.raise_()
+            self.bubble.say(error, self._body_rect())
+            return
+        self._chat_anchor = self._body_rect()
+        if self._ocr_mode == "translate":
+            src = text if len(text) <= 300 else text[:300] + "…"
+            self.trans_popup.show_translation(src, result, self._body_rect())
+        else:
+            self.trans_popup.show_translation("截图总结", result,
+                                              self._body_rect())
+
+    def _add_ocr_menu(self, parent):
+        sub = parent.addMenu("OCR 截图")
+        sub.addAction("截图翻译（Alt+S）", lambda: self._ocr_flow("translate"))
+        sub.addAction("截图总结", lambda: self._ocr_flow("summarize"))
 
     # ------------------------------------------------------------------ #
     # Character switching                                                  #
@@ -771,6 +867,8 @@ class PetWindow(QtWidgets.QWidget):
             self.hotkey.unregister()
         if getattr(self, "_translate_hotkey", None):
             self._translate_hotkey.unregister()
+        if getattr(self, "_ocr_hotkey", None):
+            self._ocr_hotkey.unregister()
         # Stop in-flight translation worker.
         if self._trans_worker is not None and self._trans_worker.isRunning():
             self._trans_worker.requestInterruption()
@@ -1304,6 +1402,8 @@ class PetWindow(QtWidgets.QWidget):
         m.addSeparator()
         self._add_tasks_menu(m)
         m.addSeparator()
+        self._add_ocr_menu(m)
+        m.addSeparator()
         self._add_focus_menu(m)
         m.addSeparator()
         m.addAction("打招呼", lambda: self._act_voice("greet", "greet"))
@@ -1500,6 +1600,8 @@ class PetWindow(QtWidgets.QWidget):
             self.hotkey.unregister()
         if getattr(self, "_translate_hotkey", None):
             self._translate_hotkey.unregister()
+        if getattr(self, "_ocr_hotkey", None):
+            self._ocr_hotkey.unregister()
         self.voice.stop()
         # Stop the clone-state probe (short-lived /ping thread) so it never
         # outlives the window; it is at most one /ping timeout long.

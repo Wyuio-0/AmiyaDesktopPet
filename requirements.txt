@@ -6,3 +6,6 @@ numpy==2.5.1
 edge-tts==7.2.8
 psutil==5.9.8          # adaptive memory tiers (pet/memory.py); degrades if absent
 Pillow==12.0.0         # ImageGrab for the screenshot action (pet/actions.py)
+# winsdk 可选：安装后启用离线 OCR（Windows 自带识别，中文支持好）。
+# 未安装时截图 OCR 会降级到 AI 视觉模型（需在 ai_config.json 配置）。
+# winsdk==1.0.0b10
