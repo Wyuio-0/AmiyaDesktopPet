@@ -17,6 +17,8 @@ from .frames import key_frame
 from .hotkey import GlobalHotkey
 from .schedule import Schedule
 from .settings import Settings
+from .tasks import Tasks
+from .tasks_ui import TaskDialog, TaskListDialog
 from .timers import CountdownBadge, DurationDialog, PomodoroDialog
 from .translate import TranslationPopup, TranslateWorker
 from .voice import VoicePlayer
@@ -189,6 +191,7 @@ class PetWindow(QtWidgets.QWidget):
         self._setup_greetings()
         self._setup_focus_tools()
         self._setup_schedule()
+        self._setup_tasks()
         # Periodically check whether the voice-clone service has been idle
         # long enough to auto-stop (frees 2-4 GB GPU RAM until next use).
         self._clone_idle_timer = QtCore.QTimer(self)
@@ -359,6 +362,93 @@ class PetWindow(QtWidgets.QWidget):
         self.reminder_requested.connect(
             self._schedule_reminder, QtCore.Qt.QueuedConnection)
         actions.set_scheduler(self.reminder_requested.emit)
+
+    # ------------------------------------------------------------------ #
+    # Tasks (homework DDLs & exams)                                        #
+    # ------------------------------------------------------------------ #
+
+    def _setup_tasks(self):
+        """待办/考试：加载任务，周期检查到期提醒。"""
+        self.tasks = Tasks()
+        self._task_reminded = set()   # 已提醒过的 task_id（完成/过期后清理）
+        self._tasks_timer = QtCore.QTimer(self)
+        self._tasks_timer.timeout.connect(self._tasks_tick)
+        self._tasks_timer.start(30 * 1000)
+
+    def _tasks_tick(self):
+        """到期前提醒一次；顺带清理已结束任务的提醒记录。"""
+        now = datetime.now()
+        # 清理：已完成或已过期的任务不再占用提醒记录
+        for t in self.tasks.items:
+            if t.done or t.expired(now):
+                self._task_reminded.discard(t.id)
+        for t in self.tasks.due_soon(now=now):
+            if t.id in self._task_reminded:
+                continue
+            self._task_reminded.add(t.id)
+            left = t.due - now
+            if left.days >= 1:
+                when = "%d 天" % left.days
+            elif left.seconds >= 3600:
+                when = "%d 小时" % (left.seconds // 3600)
+            else:
+                when = "%d 分钟" % max(1, left.seconds // 60)
+            verb = "考试" if t.kind == "exam" else "作业"
+            self._announce("博士，%s《%s》还有 %s 到期，别忘了。"
+                           % (verb, t.title, when), use_tts=True)
+
+    def _course_names(self):
+        """课表里的课程名，供添加任务时下拉选择。"""
+        return sorted({c.name for c in self.schedule.courses})
+
+    def _add_task(self, kind):
+        dlg = TaskDialog(kind, courses=self._course_names(), parent=self)
+        dlg.confirmed.connect(
+            lambda title, course, due, remind: self._on_task_added(
+                kind, title, course, due, remind))
+        dlg.exec_()
+
+    def _on_task_added(self, kind, title, course, due, remind_min):
+        self.tasks.add(title, kind=kind, due=due, course=course,
+                       remind_min=remind_min)
+        when = due.strftime("%m-%d %H:%M")
+        self._announce("已添加%s：《%s》%s到期，阿米娅会提前提醒博士。"
+                       % ("考试" if kind == "exam" else "作业", title, when),
+                       use_tts=False)
+
+    def _show_tasks(self):
+        """浮窗展示即将到期清单。"""
+        if not self.tasks.items:
+            self._show_text("还没有待办，右键菜单 → 待办与考试 → 添加作业 DDL。")
+            return
+        self._show_text(self.tasks.dump_text(limit=12))
+
+    def _show_exam_countdown(self):
+        """浮窗展示最近考试倒计时。"""
+        exams = self.tasks.exams()
+        if not exams:
+            self._show_text("当前没有未完成的考试安排。")
+            return
+        now = datetime.now()
+        lines = []
+        for t in exams[:5]:
+            days = (t.due - now).days
+            lines.append("《%s》 %s 还有 %d 天" % (
+                t.title, t.due.strftime("%Y-%m-%d"), max(days, 0)))
+        self._show_text("\n".join(lines))
+
+    def _manage_tasks(self):
+        dlg = TaskListDialog(self.tasks, parent=self)
+        dlg.exec_()
+
+    def _add_tasks_menu(self, parent):
+        sub = parent.addMenu("待办与考试")
+        sub.addAction("添加作业 DDL…", lambda: self._add_task("homework"))
+        sub.addAction("添加考试…", lambda: self._add_task("exam"))
+        sub.addSeparator()
+        sub.addAction("即将到期", self._show_tasks)
+        sub.addAction("考试倒计时", self._show_exam_countdown)
+        sub.addAction("管理待办…", self._manage_tasks)
 
     def _schedule_reminder(self, seconds, message):
         t = QtCore.QTimer(self)
@@ -1211,6 +1301,8 @@ class PetWindow(QtWidgets.QWidget):
         self._add_character_menu(m)
         m.addSeparator()
         self._add_schedule_menu(m)
+        m.addSeparator()
+        self._add_tasks_menu(m)
         m.addSeparator()
         self._add_focus_menu(m)
         m.addSeparator()
