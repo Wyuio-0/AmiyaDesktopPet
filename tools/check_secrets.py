@@ -24,13 +24,13 @@ PATTERNS = [
     (r"\b[0-9A-Fa-f]{32,}\b", "疑似令牌/哈希（32+ 位十六进制）"),
 ]
 
-# 文件名/路径片段黑名单（小写匹配）。命中即拒绝。
+# 文件名黑名单（与 basename 精确匹配，避免子串误伤）。命中即拒绝。
 BANNED = (
     "ai_config.json",      # 本地 AI 密钥配置
-    "kebiao", "schedule_raw", "schedule.json",   # 课表数据（含姓名学号）
+    "kebiao.json", "schedule_raw.json", "schedule.json",  # 课表数据（含姓名学号）
     "tts_token",           # 语音克隆共享密钥
-    ".env", "secrets",     # 环境变量/密钥文件
-    "history",             # 聊天历史（个人数据）
+    ".env", "secrets.json",  # 环境变量/密钥文件
+    "history.json",        # 聊天历史（个人数据）
 )
 
 
@@ -45,13 +45,13 @@ def scan():
             snip = diff[max(0, m.start() - 30):m.end() + 30].replace("\n", " ")
             problems.append("内容 [%s]: ...%s..." % (desc, snip[:120]))
 
-    # 2) 文件名扫描
+    # 2) 文件名扫描（basename 精确匹配）
     names = subprocess.run(["git", "diff", "--cached", "--name-only"],
                            capture_output=True, text=True).stdout
     for name in names.splitlines():
-        low = name.lower()
+        base = name.rsplit("/", 1)[-1].lower()
         for b in BANNED:
-            if b in low:
+            if base == b:
                 problems.append("文件名：%s（匹配 %s）" % (name, b))
     return problems
 
