@@ -15,6 +15,7 @@ from .character import Character
 from .chat import InputBar, ReplyWorker, SpeechBubble
 from .frames import key_frame
 from .hotkey import GlobalHotkey
+from .info_panel import InfoPanel, PAGE_OCR, PAGE_SCHEDULE, PAGE_TASKS
 from .ocr import OcrError, ocr_image, summarize_ai
 from .region_select import RegionSelect
 from .schedule import Schedule
@@ -221,6 +222,7 @@ class PetWindow(QtWidgets.QWidget):
 
         # Frozen bubble anchor during a reply (set in _ask, follows on drag).
         self._chat_anchor = None
+        self._info_panel_widget = None   # 信息面板（课程表/待办/OCR），懒创建
         # Typewriter reveal state (see TYPE_* constants).
         self._type_target = ""      # full text received so far (may still grow)
         self._type_shown = 0        # chars currently revealed in the bubble
@@ -296,51 +298,40 @@ class PetWindow(QtWidgets.QWidget):
                 use_tts=True)
 
     def _show_today(self):
-        """浮窗展示今天的课程。"""
-        s = self.schedule
-        if not s.courses:
+        """信息面板展示今天的课程。"""
+        if not self.schedule.courses:
             self.bubble.say("还没有导入课表，右键菜单 → 课程表 → 导入课表。",
                             self._body_rect())
             return
-        week_no = s.week_no()
-        courses = s.today(week_no)
-        if not courses:
-            self.bubble.say("今天没有课，博士可以自由安排。", self._body_rect())
-            return
-        parts = []
-        for c in courses:
-            line = c.display(s.sections)
-            if week_no and not c.active_on(week_no):
-                line += "（本周不上）"
-            parts.append(line)
-        self._show_text("今天有 %d 节课：\n%s" % (len(courses), "\n".join(parts)))
+        p = self._info_panel()
+        p.show_schedule("today")
+        p.present()
 
     def _show_next(self):
-        """浮窗展示下一节课。"""
-        s = self.schedule
-        if not s.courses:
+        """信息面板展示下一节课。"""
+        if not self.schedule.courses:
             self.bubble.say("还没有导入课表，右键菜单 → 课程表 → 导入课表。",
                             self._body_rect())
             return
-        nxt = s.next_class()
-        if not nxt:
-            self.bubble.say("本周没有剩下的课了，博士可以休息。", self._body_rect())
-            return
-        c, _, week_no, start = nxt
-        mins = int((start - datetime.now()).total_seconds() // 60)
-        when = "%d-%d节 %s" % (c.sec_start, c.sec_end, start.strftime("%H:%M"))
-        where = " @%s" % c.room if c.room else ""
-        extra = "（%d 分钟后）" % mins if mins > 0 else "（马上）"
-        self._show_text("下一节：%s %s%s %s" % (when, c.name, where, extra))
+        p = self._info_panel()
+        p.show_schedule("next")
+        p.present()
 
     def _show_week(self):
-        """浮窗展示本周完整课表。"""
-        s = self.schedule
-        if not s.courses:
+        """信息面板展示本周完整课表。"""
+        if not self.schedule.courses:
             self.bubble.say("还没有导入课表，右键菜单 → 课程表 → 导入课表。",
                             self._body_rect())
             return
-        self._show_text(s.dump_text(week_no=s.week_no()))
+        p = self._info_panel()
+        p.show_schedule("week")
+        p.present()
+
+    def _info_panel(self):
+        """懒创建信息面板（课程表 / 待办 / OCR 集中窗口）。"""
+        if self._info_panel_widget is None:
+            self._info_panel_widget = InfoPanel(self)
+        return self._info_panel_widget
 
     def _show_text(self, text):
         """长文本用翻译浮窗展示（可点击关闭、自动隐藏），避免气泡过高。"""
@@ -460,25 +451,16 @@ class PetWindow(QtWidgets.QWidget):
                        use_tts=False)
 
     def _show_tasks(self):
-        """浮窗展示即将到期清单。"""
-        if not self.tasks.items:
-            self._show_text("还没有待办，右键菜单 → 待办与考试 → 添加作业 DDL。")
-            return
-        self._show_text(self.tasks.dump_text(limit=12))
+        """信息面板展示待办/考试列表。"""
+        p = self._info_panel()
+        p.refresh_tasks()
+        p.present()
 
     def _show_exam_countdown(self):
-        """浮窗展示最近考试倒计时。"""
-        exams = self.tasks.exams()
-        if not exams:
-            self._show_text("当前没有未完成的考试安排。")
-            return
-        now = datetime.now()
-        lines = []
-        for t in exams[:5]:
-            days = (t.due - now).days
-            lines.append("《%s》 %s 还有 %d 天" % (
-                t.title, t.due.strftime("%Y-%m-%d"), max(days, 0)))
-        self._show_text("\n".join(lines))
+        """信息面板展示待办/考试（含考试倒计时）。"""
+        p = self._info_panel()
+        p.refresh_tasks()
+        p.present()
 
     def _manage_tasks(self):
         dlg = TaskListDialog(self.tasks, parent=self)
@@ -804,13 +786,9 @@ class PetWindow(QtWidgets.QWidget):
             self.raise_()
             self.bubble.say(error, self._body_rect())
             return
-        self._chat_anchor = self._body_rect()
-        if self._ocr_mode == "translate":
-            src = text if len(text) <= 300 else text[:300] + "…"
-            self.trans_popup.show_translation(src, result, self._body_rect())
-        else:
-            self.trans_popup.show_translation("截图总结", result,
-                                              self._body_rect())
+        p = self._info_panel()
+        p.show_ocr(self._ocr_mode, text, result)
+        p.present()
 
     def _add_ocr_menu(self, parent):
         sub = parent.addMenu("OCR 截图")
@@ -1632,6 +1610,8 @@ class PetWindow(QtWidgets.QWidget):
         self.trans_popup.close()
         if self.badge:
             self.badge.close()
+        if self._info_panel_widget is not None:
+            self._info_panel_widget.close()
         QtWidgets.QApplication.quit()
 
     def closeEvent(self, event):
