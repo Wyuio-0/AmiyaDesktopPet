@@ -10,6 +10,12 @@ on:
 env:
   PYTHON_VERSION: "3.12"
 
+# release job 需要创建 Release（生成 release notes / 上传 exe）：
+# 显式声明写权限，并配合仓库 Settings → Actions → Workflow permissions 设为
+# "Read and write permissions"（仓库级别默认 read-only 会覆盖这里）。
+permissions:
+  contents: write
+
 jobs:
   test:
     name: Test & security scan
