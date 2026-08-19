@@ -39,12 +39,24 @@ _SKIP_DIRS = (".git", "voiceclone", "installer_staging", "dist", "build",
 _BINARY_EXTS = (".webm", ".wav", ".png", ".jpg", ".jpeg", ".ico", ".pyc",
                 ".exe", ".7z", ".gz", ".pdf")
 
+# 占位符特征：README/示例里的 "sk-你的key"、"your_key" 等不是真实密钥。
+_PLACEHOLDER_MARKERS = ("你的", "您的", "your", "xxx", "placeholder",
+                        "example", "demo", "…")
+
+
+def _is_placeholder(text):
+    """匹配串是否含占位符特征（示例/教学用假 key）。"""
+    low = (text or "").lower()
+    return any(m in low for m in _PLACEHOLDER_MARKERS)
+
 
 def scan_content(diff_text):
     """对文本内容做密钥模式扫描，返回问题列表。纯函数，可单测。"""
     problems = []
     for pat, desc in PATTERNS:
         for m in re.finditer(pat, diff_text):
+            if _is_placeholder(m.group(0)):
+                continue
             snip = diff_text[max(0, m.start() - 30):m.end() + 30].replace("\n", " ")
             problems.append("内容 [%s]: ...%s..." % (desc, snip[:120]))
     return problems

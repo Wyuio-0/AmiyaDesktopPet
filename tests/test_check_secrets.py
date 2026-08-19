@@ -28,6 +28,15 @@ class TestScanContent:
     def test_plain_text_ok(self):
         assert scan_content("正常代码 print('hello')") == []
 
+    def test_readme_placeholder_ignored(self):
+        # README 示例 "api_key": "sk-你的key" 是占位符，不应误报
+        assert scan_content('"api_key": "sk-你的key",') == []
+        assert scan_content('api_key="sk-xxx"') == []
+
+    def test_real_key_still_detected(self):
+        fake = "sk-" + "AbCdef0123456789XYZabcdefghi"   # 无占位特征
+        assert scan_content('api_key="%s"' % fake)
+
 
 class TestScanNames:
     def test_banned_basename(self):
