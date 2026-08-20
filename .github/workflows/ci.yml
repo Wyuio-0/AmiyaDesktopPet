@@ -86,8 +86,33 @@ jobs:
           pip install pyinstaller==6.21.0
       - name: Build DesktopPet.exe
         run: python -m PyInstaller --noconfirm --clean DesktopPet.spec
+      - name: Prepare release notes
+        shell: pwsh
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $body = ""
+          # 1) 优先从 CHANGELOG.md 提取与 tag 匹配的段落（## [vX.Y.Z] ... 到下一个 ## [）
+          if (Test-Path CHANGELOG.md) {
+            $raw = Get-Content CHANGELOG.md -Raw
+            $esc = [regex]::Escape($tag)
+            $m = [regex]::Match($raw, "(?s)## \[$esc\].*?(?=\n## \[|\z)")
+            if ($m.Success) { $body = $m.Value.Trim() }
+          }
+          # 2) 找不到该版本段落 -> 从提交历史自动生成
+          if (-not $body) {
+            $prev = git describe --abbrev=0 --tags (git rev-list --tags --skip=1 --max-count=1) 2>$null
+            if ($prev) { $range = "$prev..HEAD" } else { $range = "HEAD" }
+            $log = git log $range --pretty=format:"- %s" --no-merges
+            $body = "## $tag`n`n### 提交`n" + $log
+          }
+          Set-Content -Path release_body.md -Value $body -Encoding UTF8
+          Write-Host "release notes ready ($($body.Length) chars)"
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/DesktopPet.exe
-          generate_release_notes: true
+          body_path: release_body.md
+          generate_release_notes: false
+          # 允许重跑时更新已发布的 Release（正文/附件同步刷新）
+          allowUpdates: true
+          update_release_body: true
