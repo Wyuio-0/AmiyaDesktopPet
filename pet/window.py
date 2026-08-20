@@ -124,6 +124,7 @@ class PetWindow(QtWidgets.QWidget):
         self._cache_full = False    # budget exhausted for current clip?
         self._bbox = None           # cached body bbox (logical px) for current frame
         self.badge = None              # created in _setup_focus_tools()
+        self._exam_badge = None        # created in _setup_tasks()（moveEvent 可能先触发）
 
         # Lazy background compression: after a looping clip's first pass,
         # raw BGRA frames are converted to PNG one-by-one on this timer
