@@ -23,6 +23,8 @@
 ### 工程
 
 - 发行说明自动生成：优先提取 CHANGELOG 对应版本段落，缺失时从提交历史生成
+- **安装包分发**：Inno Setup 生成 `DesktopPet-Setup.exe`（用户级安装、自动建桌面快捷方式）；
+  打包改为 onedir（修复 onefile 下 Qt5Core.dll 加载崩溃 0xc0000409）
 
 ## [v1.1.1] - 2026
 

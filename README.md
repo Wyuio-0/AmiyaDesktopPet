@@ -23,15 +23,16 @@
 
 ## 🚀 快速开始
 
-### 方式一：直接下载运行（推荐，无需 Python）
+### 方式一：下载安装包（推荐，无需 Python，下载即用）
 
 适合普通用户，**不需要安装 Python**。
 
-1. 到 [Releases](../../releases) 下载最新版 `DesktopPet-onedir.zip`
-2. **解压**到任意文件夹（注意：目录内 `_internal` 文件夹和 `DesktopPet.exe` 必须保持在同一位置，不能只拿单个 exe）
-3. 双击 `DesktopPet.exe` 运行（建议右键 → 发送到桌面快捷方式）
+1. 到 [Releases](../../releases) 下载最新版 **`DesktopPet-Setup-vX.Y.Z.exe`**
+2. 双击安装（用户级安装，无需管理员权限），安装完成自动创建桌面快捷方式
+3. 双击桌面「Amiya Desktop Pet」即可运行
 
-> 采用 onedir 打包（exe + `_internal` 同目录），比单文件 exe 启动更快、更稳定、更不容易被杀毒软件误报。
+> 也可以下载 `DesktopPet-onedir.zip` 手动解压运行（`DesktopPet.exe` 与 `_internal` 文件夹需保持同目录）。
+> 采用 onedir + 安装包分发，比单文件 exe 更稳定、更快、更不容易被杀毒软件误报。
 
 > 如果你需要**本地语音克隆**（GPT-SoVITS，需 NVIDIA 显卡），请下载完整安装包（`DesktopPet_v*.7z.001` 等分卷），全部下载完后右键 `.001` → 解压，然后运行 `setup.bat`。
 

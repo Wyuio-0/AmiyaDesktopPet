@@ -67,11 +67,18 @@ jobs:
       - name: Package zip (onedir)
         shell: pwsh
         run: Compress-Archive -Path dist\DesktopPet\* -DestinationPath DesktopPet-onedir.zip -Force
-      - name: Upload artifact
+      - name: Build installer (Inno Setup)
+        uses: jrsoftware-org/iscc-action@v3
+        with:
+          spec: installer/DesktopPet.iss
+          params: /DAppVersion=${{ github.ref_name }}
+      - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
-          name: DesktopPet-onedir
-          path: DesktopPet-onedir.zip
+          name: DesktopPet-dist
+          path: |
+            DesktopPet-onedir.zip
+            dist/DesktopPet-Setup-*.exe
           if-no-files-found: error
 
   release:
@@ -96,6 +103,11 @@ jobs:
       - name: Package zip (onedir)
         shell: pwsh
         run: Compress-Archive -Path dist\DesktopPet\* -DestinationPath DesktopPet-onedir.zip -Force
+      - name: Build installer (Inno Setup)
+        uses: jrsoftware-org/iscc-action@v3
+        with:
+          spec: installer/DesktopPet.iss
+          params: /DAppVersion=${{ github.ref_name }}
       - name: Prepare release notes
         shell: pwsh
         run: |
@@ -120,7 +132,9 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: DesktopPet-onedir.zip
+          files: |
+            dist/DesktopPet-Setup-*.exe
+            DesktopPet-onedir.zip
           body_path: release_body.md
           generate_release_notes: false
           # v3 默认支持更新已存在的 Release（重跑会刷新正文/附件），无需 allowUpdates
