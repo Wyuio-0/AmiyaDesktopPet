@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 # 桌面宠物 —— 一键构建脚本
 #
 # 作用：重新用 PyInstaller 打包 DesktopPet.exe，同步角色资源（阿米娅 / 圣聆初雪
@@ -13,10 +13,11 @@ $ErrorActionPreference = 'Stop'
 $Root      = $PSScriptRoot
 $Spec      = Join-Path $Root 'DesktopPet.spec'
 $DistDir   = Join-Path $Root 'dist'
-$ExePath   = Join-Path $DistDir 'DesktopPet.exe'
+$AppDir    = Join-Path $DistDir 'DesktopPet'   # onedir 输出目录（exe + _internal）
+$ExePath   = Join-Path $AppDir 'DesktopPet.exe'
 $IconPath  = Join-Path $Root 'app.ico'
 $CharSrc   = Join-Path $Root 'characters'
-$CharDst   = Join-Path $DistDir 'characters'
+$CharDst   = Join-Path $AppDir 'characters'
 $Desktop   = [Environment]::GetFolderPath('Desktop')
 $Shortcut  = Join-Path $Desktop '桌面宠物.lnk'
 
@@ -67,7 +68,7 @@ $wsh = New-Object -ComObject WScript.Shell
 $lnk = $wsh.CreateShortcut($Shortcut)
 $lnk.TargetPath       = $ExePath
 $lnk.Arguments        = ''
-$lnk.WorkingDirectory = $DistDir
+$lnk.WorkingDirectory = $AppDir
 # 图标缺失时回退到 exe 自带图标，避免快捷方式显示空白图标。
 $lnk.IconLocation     = if (Test-Path $IconPath) { "$IconPath,0" } else { "$ExePath,0" }
 $lnk.Description       = '桌面宠物'

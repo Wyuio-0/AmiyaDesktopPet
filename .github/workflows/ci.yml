@@ -55,20 +55,23 @@ jobs:
       - name: Verify no secrets leaked into dist
         shell: pwsh
         run: |
-          if (Test-Path dist\characters\amiya\ai_config.json) {
+          if (Test-Path dist\DesktopPet\characters\amiya\ai_config.json) {
             Write-Error "ai_config.json leaked into dist!"
             exit 1
           }
-          if (Get-ChildItem dist\characters -Recurse -Directory -Filter ".claude") {
+          if (Get-ChildItem dist\DesktopPet\characters -Recurse -Directory -Filter ".claude") {
             Write-Error ".claude leaked into dist!"
             exit 1
           }
           Write-Host "dist clean"
+      - name: Package zip (onedir)
+        shell: pwsh
+        run: Compress-Archive -Path dist\DesktopPet\* -DestinationPath DesktopPet-onedir.zip -Force
       - name: Upload artifact
         uses: actions/upload-artifact@v6
         with:
-          name: DesktopPet-exe
-          path: dist/DesktopPet.exe
+          name: DesktopPet-onedir
+          path: DesktopPet-onedir.zip
           if-no-files-found: error
 
   release:
@@ -90,6 +93,9 @@ jobs:
           pip install pyinstaller==6.21.0
       - name: Build DesktopPet.exe
         run: python -m PyInstaller --noconfirm --clean DesktopPet.spec
+      - name: Package zip (onedir)
+        shell: pwsh
+        run: Compress-Archive -Path dist\DesktopPet\* -DestinationPath DesktopPet-onedir.zip -Force
       - name: Prepare release notes
         shell: pwsh
         run: |
@@ -114,7 +120,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/DesktopPet.exe
+          files: DesktopPet-onedir.zip
           body_path: release_body.md
           generate_release_notes: false
           # v3 默认支持更新已存在的 Release（重跑会刷新正文/附件），无需 allowUpdates
