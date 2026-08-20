@@ -68,10 +68,11 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path dist\DesktopPet\* -DestinationPath DesktopPet-onedir.zip -Force
       - name: Build installer (Inno Setup)
-        uses: jrsoftware-org/iscc-action@v3
-        with:
-          spec: installer/DesktopPet.iss
-          params: /DAppVersion=${{ github.ref_name }}
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "installer\DesktopPet.iss" /DAppVersion=dev
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -104,10 +105,11 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path dist\DesktopPet\* -DestinationPath DesktopPet-onedir.zip -Force
       - name: Build installer (Inno Setup)
-        uses: jrsoftware-org/iscc-action@v3
-        with:
-          spec: installer/DesktopPet.iss
-          params: /DAppVersion=${{ github.ref_name }}
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "installer\DesktopPet.iss" /DAppVersion=${{ github.ref_name }}
       - name: Prepare release notes
         shell: pwsh
         run: |
