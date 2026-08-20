@@ -108,7 +108,7 @@ jobs:
           Set-Content -Path release_body.md -Value $body -Encoding UTF8
           Write-Host "release notes ready ($($body.Length) chars)"
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/DesktopPet.exe
           body_path: release_body.md
