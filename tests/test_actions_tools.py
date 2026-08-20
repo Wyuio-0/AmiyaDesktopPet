@@ -1,0 +1,85 @@
+"""Actions schedule/tasks tools tests (with injected providers)."""
+from datetime import date, datetime
+
+import pytest
+
+from pet import actions
+from pet.schedule import Schedule, import_strongzhi
+from pet.tasks import Tasks
+
+MINI_KB = {"kbList": [{"kcmc": "高数", "xqj": "1", "jc": "1-2节",
+                       "zcd": "1-14周", "cdmc": "3教201", "xm": "张",
+                       "xqmc": "x", "pkbj": "1", "xkbz": " "}]}
+
+
+@pytest.fixture()
+def providers(tmp_path):
+    sched = Schedule(path=str(tmp_path / "s.json"))
+    courses, _, _ = import_strongzhi(MINI_KB, date(2026, 9, 7))
+    sched.save(term_start=date.today(), courses=courses)
+    tasks = Tasks(path=str(tmp_path / "t.json"))
+    actions.set_schedule_provider(lambda: sched)
+    actions.set_tasks_provider(lambda: tasks)
+    yield sched, tasks
+    actions.set_schedule_provider(None)
+    actions.set_tasks_provider(None)
+
+
+class TestScheduleTools:
+    def test_query_schedule_today(self, providers):
+        # 迷你课表只有周一的高数；"今天"取决于真实星期，故只断言结构
+        out = actions.query_schedule("today")
+        assert out.startswith("今天") and ("节课" in out or "没有课" in out)
+
+    def test_query_schedule_week(self, providers):
+        assert "高数" in actions.query_schedule("week")
+
+    def test_query_schedule_next(self, providers):
+        out = actions.query_schedule("next")
+        assert out and ("高数" in out or "没有剩下的课" in out)
+
+    def test_query_schedule_no_data(self):
+        actions.set_schedule_provider(lambda: None)
+        assert "还没有导入课表" in actions.query_schedule("today")
+
+    def test_run_action_dispatch(self, providers):
+        out = actions.run_action("query_schedule", {"scope": "week"})
+        assert "高数" in out
+
+
+class TestTaskTools:
+    def test_add_task_parses_natural_language(self, providers):
+        sched, tasks = providers
+        out = actions.add_task("高数作业", "明天", course="高等数学")
+        assert "已添加作业" in out and len(tasks.items) == 1
+
+    def test_add_task_exam(self, providers):
+        sched, tasks = providers
+        actions.add_task("期末考试", "9月20日", kind="exam")
+        assert tasks.items[0].kind == "exam"
+
+    def test_add_task_bad_date(self, providers):
+        sched, tasks = providers
+        out = actions.add_task("作业", "不知道什么时候")
+        assert "没能理解" in out and len(tasks.items) == 0
+
+    def test_query_tasks(self, providers):
+        sched, tasks = providers
+        actions.add_task("高数作业", "明天")
+        assert "高数作业" in actions.query_tasks()
+
+    def test_query_tasks_empty(self, providers):
+        sched, tasks = providers
+        assert "没有待办" in actions.query_tasks()
+
+
+class TestToolsSchema:
+    def test_new_tools_in_schema(self):
+        names = [t["function"]["name"] for t in actions.TOOLS]
+        assert "query_schedule" in names
+        assert "query_tasks" in names
+        assert "add_task" in names
+
+    def test_all_handlers_registered(self):
+        for t in actions.TOOLS:
+            assert t["function"]["name"] in actions._HANDLERS

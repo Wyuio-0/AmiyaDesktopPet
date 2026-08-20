@@ -26,7 +26,7 @@ from .timers import CountdownBadge, DurationDialog, PomodoroDialog
 from .translate import TranslationPopup, TranslateWorker
 from .translate import _translate_via_ai, _translate_via_google
 from .voice import VoicePlayer
-from . import actions, memory, schedule, theme, translate, tts
+from . import actions, knowledge, memory, schedule, theme, translate, tts
 
 # Typewriter reveal: show the streamed reply at a steady pace regardless of how
 # bursty the network delivery is. One "step" reveals TYPE_STEP chars every
@@ -237,6 +237,7 @@ class PetWindow(QtWidgets.QWidget):
         self._setup_focus_tools()
         self._setup_schedule()
         self._setup_tasks()
+        self._attach_brain_services()
         # Periodically check whether the voice-clone service has been idle
         # long enough to auto-stop (frees 2-4 GB GPU RAM until next use).
         self._clone_idle_timer = QtCore.QTimer(self)
@@ -408,6 +409,17 @@ class PetWindow(QtWidgets.QWidget):
         self._tasks_timer = QtCore.QTimer(self)
         self._tasks_timer.timeout.connect(self._tasks_tick)
         self._tasks_timer.start(30 * 1000)
+
+    def _attach_brain_services(self):
+        """把课表/待办/知识库挂到 brain 和 actions。
+
+        brain 在切换角色 / 保存模型配置时会被重建，重建后需要重新挂载。
+        actions 的注入让 LLM 工具能读取 schedule/tasks；knowledge 让对话
+        基于讲义检索上下文。
+        """
+        actions.set_schedule_provider(lambda: self.schedule)
+        actions.set_tasks_provider(lambda: self.tasks)
+        self.brain.knowledge = knowledge.KnowledgeBase()
 
     def _tasks_tick(self):
         """到期前提醒一次；顺带清理已结束任务的提醒记录。"""
@@ -794,6 +806,22 @@ class PetWindow(QtWidgets.QWidget):
         sub = parent.addMenu("OCR 截图")
         sub.addAction("截图翻译（Alt+S）", lambda: self._ocr_flow("translate"))
         sub.addAction("截图总结", lambda: self._ocr_flow("summarize"))
+        sub.addSeparator()
+        sub.addAction("重新加载知识库", self._reload_knowledge)
+
+    def _reload_knowledge(self):
+        """重新扫描讲义目录（%APPDATA%\\AmiyaPet\\knowledge\\）。"""
+        kb = getattr(self.brain, "knowledge", None)
+        if kb is None:
+            self._attach_brain_services()
+            kb = self.brain.knowledge
+        kb.reload()
+        if len(kb):
+            self.bubble.say("知识库已重新加载：%d 个片段。"
+                            % len(kb), self._body_rect())
+        else:
+            self.bubble.say("知识库为空。请把讲义 .txt / .md 放进\n%s"
+                            % kb.folder, self._body_rect())
 
     # ------------------------------------------------------------------ #
     # Character switching                                                  #
@@ -903,6 +931,7 @@ class PetWindow(QtWidgets.QWidget):
         self.brain = AmiyaBrain(self.char.dir,
                                 persona=self.char.cfg.get("persona"),
                                 fallback=self.char.cfg.get("fallback"))
+        self._attach_brain_services()
         self._update_chat_placeholder()
         self._setup_hotkey()
         self._setup_greetings()
@@ -1406,6 +1435,7 @@ class PetWindow(QtWidgets.QWidget):
                                 persona=self.char.cfg.get("persona"),
                                 fallback=self.char.cfg.get("fallback"))
         self.brain.history = old_history
+        self._attach_brain_services()
         if cfg.get("api_key"):
             text = "模型配置已保存，%s会用新的大模型回答博士。" % self.char.display_name
         else:

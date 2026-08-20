@@ -14,9 +14,12 @@ PERSONA = (
     "你说话礼貌、真诚，偶尔流露少女的关心与坚强。回答简洁自然，一般一到三句话，"
     "像日常聊天，不要长篇大论，不要使用括号动作描写或表情符号，只用中文回答。"
     "当博士需要时，你可以调用提供的工具帮他操作电脑（打开程序、网页、搜索、"
-    "调音量、控制媒体、锁屏、截图、报时、设置定时提醒）。做完后用一句自然的话告诉博士结果。"
+    "调音量、控制媒体、锁屏、截图、报时、设置定时提醒），也能帮他查课表"
+    "（query_schedule）、管理作业和考试（query_tasks / add_task）。"
+    "做完后用一句自然的话告诉博士结果。"
     "重要：只要博士的要求能用工具完成——尤其是设置提醒/闹钟/番茄钟（set_reminder）、"
-    "开程序、开网页这类操作——你必须实际调用对应的工具，绝不能只用嘴答应而不调用。"
+    "查课表、添加作业截止（add_task）、开程序、开网页这类操作——"
+    "你必须实际调用对应的工具，绝不能只用嘴答应而不调用。"
     "先调用工具，再根据工具返回的结果回话。"
 )
 
@@ -56,6 +59,23 @@ class AmiyaBrain:
         # Restore the last conversation so Amiya "remembers" across restarts.
         self.history = self._load_history()   # list of {"role","content"}
         self._fallback_i = 0
+        self.knowledge = None   # pet.knowledge.KnowledgeBase（由窗口注入）
+
+    def _knowledge_context(self):
+        """按当前用户问题检索讲义片段，返回可注入 system 的上下文（或空串）。"""
+        kb = self.knowledge
+        if not kb:
+            return ""
+        question = ""
+        for m in reversed(self.history):
+            if m.get("role") == "user" and isinstance(m.get("content"), str):
+                question = m["content"]
+                break
+        ctx = kb.context(question)
+        if not ctx:
+            return ""
+        return ("\n\n以下是博士的课程资料片段（回答时请优先参考；"
+                "若与问题无关可忽略）：\n" + ctx)
 
     @property
     def online(self):
@@ -139,7 +159,9 @@ class AmiyaBrain:
     def _call_llm(self):
         """Chat with an optional tool-call loop (max 4 tool rounds)."""
         use_tools = self.cfg.get("allow_actions", True)
-        msgs = [{"role": "system", "content": self.persona}] + list(self.history)
+        system = {"role": "system",
+                  "content": self.persona + self._knowledge_context()}
+        msgs = [system] + list(self.history)
         for _ in range(4):
             msg = self._post(msgs, use_tools)
             calls = msg.get("tool_calls")
@@ -175,7 +197,9 @@ class AmiyaBrain:
         streams its content tokens out through on_delta as they arrive.
         """
         use_tools = self.cfg.get("allow_actions", True)
-        msgs = [{"role": "system", "content": self.persona}] + list(self.history)
+        system = {"role": "system",
+                  "content": self.persona + self._knowledge_context()}
+        msgs = [system] + list(self.history)
         for _ in range(4):
             msg = self._post_stream(msgs, use_tools, on_delta)
             calls = msg.get("tool_calls")
