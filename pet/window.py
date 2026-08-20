@@ -403,12 +403,48 @@ class PetWindow(QtWidgets.QWidget):
     # ------------------------------------------------------------------ #
 
     def _setup_tasks(self):
-        """待办/考试：加载任务，周期检查到期提醒。"""
+        """待办/考试：加载任务，周期检查到期提醒 + 考试倒计时徽章。"""
         self.tasks = Tasks()
         self._task_reminded = set()   # 已提醒过的 task_id（完成/过期后清理）
         self._tasks_timer = QtCore.QTimer(self)
         self._tasks_timer.timeout.connect(self._tasks_tick)
         self._tasks_timer.start(30 * 1000)
+        # 考试倒计时常驻徽章（放桌宠左上，避免与专注徽章重叠）。
+        self._exam_badge = CountdownBadge()
+        self._exam_timer = QtCore.QTimer(self)
+        self._exam_timer.timeout.connect(self._refresh_exam_badge)
+        self._exam_timer.start(60 * 60 * 1000)   # 每小时刷新天数
+        self._refresh_exam_badge()
+
+    def _refresh_exam_badge(self):
+        """最近考试剩余天数显示在桌宠旁；无考试或开关关闭时隐藏。"""
+        b = self._exam_badge
+        if not self.prefs.get("exam_badge", True):
+            b.hide()
+            return
+        exams = self.tasks.exams()
+        if not exams:
+            b.hide()
+            return
+        t = exams[0]
+        days = max((t.due - datetime.now()).days, 0)
+        b.show_text("距%s\n还有 %d 天" % (t.title, days), self._body_rect())
+        self._place_exam_badge()
+
+    def _place_exam_badge(self):
+        """考试徽章定位到桌宠左上角（专注徽章在右上角）。"""
+        b = self._exam_badge
+        rect = self._body_rect()
+        x = rect.left() - b.width() // 2
+        y = rect.top() - b.height() // 2
+        b.move(max(0, x), max(0, y))
+
+    def _toggle_exam_badge(self, checked):
+        self.prefs.set("exam_badge", bool(checked))
+        if checked:
+            self._refresh_exam_badge()
+        else:
+            self._exam_badge.hide()
 
     def _attach_brain_services(self):
         """把课表/待办/知识库挂到 brain 和 actions。
@@ -486,6 +522,10 @@ class PetWindow(QtWidgets.QWidget):
         sub.addAction("即将到期", self._show_tasks)
         sub.addAction("考试倒计时", self._show_exam_countdown)
         sub.addAction("管理待办…", self._manage_tasks)
+        badge_act = sub.addAction("考试倒计时徽章")
+        badge_act.setCheckable(True)
+        badge_act.setChecked(self.prefs.get("exam_badge", True))
+        badge_act.toggled.connect(self._toggle_exam_badge)
 
     def _schedule_reminder(self, seconds, message):
         t = QtCore.QTimer(self)
@@ -1072,6 +1112,8 @@ class PetWindow(QtWidgets.QWidget):
             self.input.reposition(rect)
         if self.badge and self.badge.isVisible():
             self.badge.reposition(rect)
+        if self._exam_badge and self._exam_badge.isVisible():
+            self._place_exam_badge()
         if self.trans_popup.isVisible():
             self.trans_popup.reposition(rect)
 
@@ -1640,6 +1682,8 @@ class PetWindow(QtWidgets.QWidget):
         self.trans_popup.close()
         if self.badge:
             self.badge.close()
+        if getattr(self, "_exam_badge", None):
+            self._exam_badge.close()
         if self._info_panel_widget is not None:
             self._info_panel_widget.close()
         QtWidgets.QApplication.quit()

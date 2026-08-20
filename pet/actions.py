@@ -255,6 +255,40 @@ def query_tasks():
     return tasks.dump_text(limit=15)
 
 
+def today_summary():
+    """一键汇总今日安排：今天的课程 + 待办/考试 + 最近考试倒计时。"""
+    sched = _schedule_provider() if _schedule_provider else None
+    tasks = _tasks_provider() if _tasks_provider else None
+    parts = []
+
+    # 今天的课程
+    if sched is not None and sched.courses:
+        week_no = sched.week_no()
+        courses = sched.today(week_no)
+        parts.append(_fmt_courses("今天", courses, sched, week_no)
+                     if courses else "今天没有课。")
+
+    # 待办（未完成的作业/考试）
+    if tasks is not None:
+        upcoming = tasks.upcoming(limit=8)
+        if upcoming:
+            lines = ["今日待办："]
+            for t in upcoming:
+                tag = "考试" if t.kind == "exam" else "作业"
+                lines.append("  %s《%s》%s 截止" % (
+                    tag, t.title, t.due.strftime("%m-%d %H:%M")))
+            parts.append("\n".join(lines))
+        exams = tasks.exams()
+        if exams:
+            t = exams[0]
+            days = max((t.due - datetime.now()).days, 0)
+            parts.append("最近的考试：%s，还有 %d 天。" % (t.title, days))
+
+    if not parts:
+        return "今天没有安排，博士可以自由安排。"
+    return "\n\n".join(parts)
+
+
 def add_task(title, due, course="", kind="homework"):
     """添加作业/考试待办；due 支持自然语言（明天/周五 23:59/9月20日）。"""
     from .tasks import parse_datetime
@@ -282,7 +316,7 @@ _HANDLERS = {
     "lock_screen": lock_screen, "screenshot": screenshot,
     "get_datetime": get_datetime, "set_reminder": set_reminder,
     "query_schedule": query_schedule, "query_tasks": query_tasks,
-    "add_task": add_task,
+    "add_task": add_task, "today_summary": today_summary,
 }
 
 
@@ -345,4 +379,6 @@ TOOLS = [
          "kind": {"type": "string", "enum": ["homework", "exam"],
                   "description": "作业或考试，默认作业"}},
         ["title", "due"]),
+    _fn("today_summary",
+        "一键汇总博士今天的安排：今天的课程、待办作业/考试、最近考试倒计时"),
 ]

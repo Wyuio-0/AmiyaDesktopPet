@@ -73,12 +73,31 @@ class TestTaskTools:
         assert "没有待办" in actions.query_tasks()
 
 
+class TestTodaySummary:
+    def test_summary_includes_course(self, providers):
+        out = actions.today_summary()
+        assert ("今天" in out and ("节课" in out or "没有课" in out))
+
+    def test_summary_includes_tasks(self, providers):
+        sched, tasks = providers
+        actions.add_task("高数作业", "明天", course="高等数学")
+        actions.add_task("期末考试", "2026-12-25", kind="exam")
+        out = actions.today_summary()
+        assert "高数作业" in out and "期末考试" in out
+
+    def test_summary_empty(self):
+        actions.set_schedule_provider(lambda: None)
+        actions.set_tasks_provider(lambda: None)
+        assert "没有安排" in actions.today_summary()
+
+
 class TestToolsSchema:
     def test_new_tools_in_schema(self):
         names = [t["function"]["name"] for t in actions.TOOLS]
         assert "query_schedule" in names
         assert "query_tasks" in names
         assert "add_task" in names
+        assert "today_summary" in names
 
     def test_all_handlers_registered(self):
         for t in actions.TOOLS:
