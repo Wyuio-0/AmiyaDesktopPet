@@ -113,6 +113,4 @@ jobs:
           files: dist/DesktopPet.exe
           body_path: release_body.md
           generate_release_notes: false
-          # 允许重跑时更新已发布的 Release（正文/附件同步刷新）
-          allowUpdates: true
-          update_release_body: true
+          # v3 默认支持更新已存在的 Release（重跑会刷新正文/附件），无需 allowUpdates
