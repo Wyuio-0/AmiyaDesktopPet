@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 # 桌面宠物 —— 一键构建脚本
 #
 # 作用：重新用 PyInstaller 打包 DesktopPet.exe，同步角色资源（阿米娅 / 圣聆初雪
