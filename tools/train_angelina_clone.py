@@ -56,6 +56,8 @@ ap.add_argument("--batch", type=int, default=2)
 ap.add_argument("--fp16", action="store_true")
 ap.add_argument("--tf32", action="store_true", help="启用 TF32（默认关闭，纯 FP32）")
 ap.add_argument("--no-cudnn", action="store_true", help="关闭 cuDNN（换回退 kernel）")
+ap.add_argument("--no-weight-norm", action="store_true",
+                help="把 weight_norm 折叠为普通卷积（若 weight_norm backward 崩溃）")
 a = ap.parse_args()
 
 # ── 写训练配置（s2_train import 时读取）────────────────────────────
@@ -99,6 +101,15 @@ def _no_scaler(*aa, **kw):
 
 _amp.GradScaler = _no_scaler
 print("[cfg] GradScaler DISABLED (pure FP32 backward)", flush=True)
+
+# ── 关键规避 2：weight_norm 折叠为普通卷积 ────────────────────────
+# 若 weight_norm 的 backward kernel 在 Blackwell 崩溃（待 mini_weightnorm.py
+# 确认），把它 patch 成恒等（不包裹），模型等价（推理也常 remove_weight_norm）。
+if a.no_weight_norm:
+    import torch.nn.utils as _tnu  # noqa: E402
+    _orig_wn = _tnu.weight_norm
+    _tnu.weight_norm = lambda module, *aa, **kw: module
+    print("[cfg] weight_norm FOLDED (plain conv)", flush=True)
 
 print("torch %s  cuda %s  fp16=%s batch=%d epochs=%d tf32=%s cudnn=%s"
       % (torch.__version__, torch.version.cuda, a.fp16, a.batch, a.epochs,
