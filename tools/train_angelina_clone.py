@@ -102,14 +102,21 @@ def _no_scaler(*aa, **kw):
 _amp.GradScaler = _no_scaler
 print("[cfg] GradScaler DISABLED (pure FP32 backward)", flush=True)
 
-# ── 关键规避 2：weight_norm 折叠为普通卷积 ────────────────────────
-# 若 weight_norm 的 backward kernel 在 Blackwell 崩溃（待 mini_weightnorm.py
-# 确认），把它 patch 成恒等（不包裹），模型等价（推理也常 remove_weight_norm）。
-if a.no_weight_norm:
-    import torch.nn.utils as _tnu  # noqa: E402
-    _orig_wn = _tnu.weight_norm
-    _tnu.weight_norm = lambda module, *aa, **kw: module
-    print("[cfg] weight_norm FOLDED (plain conv)", flush=True)
+# ── 关键规避 2：去掉 DDP（元凶确认）──────────────────────────────
+# torch 2.11 Windows 版未编译 NCCL（"Distributed package doesn't have NCCL
+# built in"），单进程下 DDP 的 backward reducer 梯度同步触发原生崩溃
+# （access violation）。把 DistributedDataParallel 换成假类：实例化直接返回
+# 原模型——ddp_utils 的 `class DDP(DistributedDataParallel)` 仍能继承（类是类），
+# 但 `DDP(model, ...)` 拿到的是原模型，训练走纯单进程非分布式。
+class _NoDDP:
+    def __new__(cls, module, *args, **kwargs):
+        return module
+
+
+import torch.nn.parallel as _np  # noqa: E402
+_np.DistributedDataParallel = _NoDDP
+print("[cfg] DDP DISABLED (no NCCL on Windows; single-process training)",
+      flush=True)
 
 print("torch %s  cuda %s  fp16=%s batch=%d epochs=%d tf32=%s cudnn=%s"
       % (torch.__version__, torch.version.cuda, a.fp16, a.batch, a.epochs,
