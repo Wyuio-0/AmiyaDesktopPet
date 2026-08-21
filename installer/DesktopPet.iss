@@ -1,7 +1,8 @@
 ; Amiya Desktop Pet — Inno Setup 安装包脚本
-; CI 用 jrsoftware-org/iscc-action 构建：iscc installer/DesktopPet.iss /DAppVersion=<tag>
-; 本地构建：安装 Inno Setup 6 后执行
-;   iscc installer/DesktopPet.iss
+; CI 构建：iscc installer/DesktopPet.iss -dMyAppVersion=<tag>   （Inno Setup 7）
+; 本地构建（Inno Setup 7）：iscc installer\DesktopPet.iss -dMyAppVersion=1.3.2
+; 注意：变量名必须是 MyAppVersion（与下方 #ifndef 一致），传 AppVersion 无效；
+;       ISCC 6 用 /D 前缀（/DMyAppVersion=...），ISCC 7 改为 -d / --define。
 
 #define MyAppName "Amiya Desktop Pet"
 #ifndef MyAppVersion

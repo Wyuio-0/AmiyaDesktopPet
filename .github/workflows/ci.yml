@@ -69,10 +69,22 @@ jobs:
         run: Compress-Archive -Path dist\DesktopPet\* -DestinationPath DesktopPet-onedir.zip -Force
       - name: Build installer (Inno Setup)
         shell: pwsh
+        env:
+          MY_APP_VERSION: dev
         run: |
           choco install innosetup -y --no-progress
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
-            "installer\DesktopPet.iss" /DAppVersion=dev
+          # ISCC 7 路径优先，其次 6，最后 PATH；/D(6) 与 -d(7) 语法不同需按版本选择
+          $iscc = @("C:\Program Files (x86)\Inno Setup 7\ISCC.exe",
+                    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") |
+                  Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+            if ($cmd) { $iscc = $cmd.Source } else { throw "ISCC.exe not found" }
+          }
+          $head = (& $iscc /? 2>&1 | Select-Object -First 1)
+          $flag = if ($head -match "Inno Setup 7") { "-dMyAppVersion=" } else { "/DMyAppVersion=" }
+          Write-Host "Using $iscc :: $head"
+          & $iscc "installer\DesktopPet.iss" "$flag$env:MY_APP_VERSION"
       - name: Upload artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -106,10 +118,22 @@ jobs:
         run: Compress-Archive -Path dist\DesktopPet\* -DestinationPath DesktopPet-onedir.zip -Force
       - name: Build installer (Inno Setup)
         shell: pwsh
+        env:
+          MY_APP_VERSION: ${{ github.ref_name }}
         run: |
           choco install innosetup -y --no-progress
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
-            "installer\DesktopPet.iss" /DAppVersion=${{ github.ref_name }}
+          # ISCC 7 路径优先，其次 6，最后 PATH；/D(6) 与 -d(7) 语法不同需按版本选择
+          $iscc = @("C:\Program Files (x86)\Inno Setup 7\ISCC.exe",
+                    "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") |
+                  Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+            if ($cmd) { $iscc = $cmd.Source } else { throw "ISCC.exe not found" }
+          }
+          $head = (& $iscc /? 2>&1 | Select-Object -First 1)
+          $flag = if ($head -match "Inno Setup 7") { "-dMyAppVersion=" } else { "/DMyAppVersion=" }
+          Write-Host "Using $iscc :: $head"
+          & $iscc "installer\DesktopPet.iss" "$flag$env:MY_APP_VERSION"
       - name: Prepare release notes
         shell: pwsh
         run: |
