@@ -83,6 +83,36 @@ else:
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
     torch.set_float32_matmul_precision("highest")
+
+# ── 关键规避 1：禁用 GradScaler ─────────────────────────────────
+# s2_train 即使 fp16_run=False 也用 torch.cuda.amp.GradScaler 包 backward，
+# scaler 内部走 fp16 自动缩放，其 autograd kernel 在 Blackwell 上段错误。
+# 强制 enabled=False -> scale(x).backward() 等价于 x.backward()（纯 FP32）。
+import torch.cuda.amp as _amp  # noqa: E402
+_orig_scaler = _amp.GradScaler
+
+
+def _no_scaler(*aa, **kw):
+    kw["enabled"] = False
+    return _orig_scaler(*aa, **kw)
+
+
+_amp.GradScaler = _no_scaler
+print("[cfg] GradScaler DISABLED (pure FP32 backward)", flush=True)
+
+# ── 关键规避 2：去掉 DDP ─────────────────────────────────────────
+# 单进程下 s2_train 仍包 DistributedDataParallel，DDP reducer 在 backward
+# 介入并崩溃。把 DDP 替换为"返回原模型"。
+import torch.nn.parallel as _np  # noqa: E402
+
+
+def _no_ddp(model, *aa, **kw):
+    return model
+
+
+_np.DistributedDataParallel = _no_ddp
+print("[cfg] DDP DISABLED (single-process training)", flush=True)
+
 print("torch %s  cuda %s  fp16=%s batch=%d epochs=%d tf32=%s cudnn=%s"
       % (torch.__version__, torch.version.cuda, a.fp16, a.batch, a.epochs,
          a.tf32, not a.no_cudnn), flush=True)
