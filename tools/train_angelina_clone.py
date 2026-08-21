@@ -110,12 +110,10 @@ print("[cfg] GradScaler DISABLED (pure FP32 backward)", flush=True)
 # 但 `DDP(model, ...)` 拿到的是原模型，训练走纯单进程非分布式。
 class _NoDDP:
     def __new__(cls, module, *args, **kwargs):
-        # s2_train 的检查点恢复逻辑按 DDP 包装方式访问 net_g.module /
-        # net_d.module（例如加载预训练权重时），补一个指向自身的 .module。
-        try:
-            module.module = module
-        except Exception:
-            pass
+        # s2_train 的检查点恢复按 DDP 包装访问 net_g.module / net_d.module。
+        # 用 object.__setattr__ 绕过 nn.Module 的子模块注册——否则 .module
+        # 会被当成子模块，load_state_dict 遍历时无限递归。
+        object.__setattr__(module, "module", module)
         return module
 
 
