@@ -5,6 +5,32 @@
 > CI 发布时会自动提取与 tag 匹配的段落（`## [vX.Y.Z]`）作为 GitHub Release 正文；
 > 若该版本段落不存在，则自动从提交历史生成。新增功能记得在 `## [Unreleased]` 下补记。
 
+## [v1.3.2] - 2026
+
+### 修复
+
+- add_character 测试在 `tmp_path/src` 下未先建目录，导致 CI 报 FileNotFoundError
+
+## [v1.3.1] - 2026
+
+### 新增
+
+- **一键添加新角色**：右键 → 切换人物 → 添加新角色…，选择素材文件夹（按动作子目录
+  或文件名关键词自动分类），自动复制视频/语音并生成 `config.json`
+
+## [v1.3.0] - 2026
+
+### 新增
+
+- **一键语音克隆微调**：`tools/train_clone.bat` 双击即用——准备音频+文本标注即可
+  自动预处理并训练 GPT-SoVITS S2（含安洁莉娜数据管线脚本）
+- **RTX 5060（Blackwell）训练兼容方案**：单进程训练、假 DDP（Windows torch 无
+  NCCL）、禁用 GradScaler / TF32 / cuDNN / fp16 / weight_norm，修复 backward 段错误
+
+### 工程
+
+- 安装包 CI 自动化：choco 安装 Inno Setup 后直接调用 ISCC（不再依赖失效的 iscc-action）
+
 ## [v1.2.1] - 2026
 
 ### 新增
