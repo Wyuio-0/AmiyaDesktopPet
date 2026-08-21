@@ -15,6 +15,7 @@ def chars_root(tmp_path):
 
 def _make_flat_src(tmp_path):
     """平铺素材：文件名带动作关键词。"""
+    tmp_path.mkdir(parents=True, exist_ok=True)
     for fn in ("test-Idle-x1.webm", "test-Click-x1.webm",
                "test-Move-x1.webm", "test-Sit-x1.webm",
                "test-Sleep-x1.webm", "test-Greet-x1.webm",
@@ -25,6 +26,7 @@ def _make_flat_src(tmp_path):
 
 def _make_dir_src(tmp_path):
     """按动作分子目录的素材。"""
+    tmp_path.mkdir(parents=True, exist_ok=True)
     for a in ("idle", "click", "move"):
         d = tmp_path / a
         d.mkdir()
