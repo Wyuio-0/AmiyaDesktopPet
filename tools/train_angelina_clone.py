@@ -11,9 +11,17 @@ CUDA_LAUNCH_BLOCKING=1 才能稳定。本脚本照此规避：
   3. CUDA_LAUNCH_BLOCKING=1（同步 CUDA 启动，错误即时报出）
   4. batch_size 默认 2（38 条数据足够小）；--fp16 可选（不同 CUDA kernel，
      若 fp16 off 崩溃可尝试开启）
+  5. 默认关闭 TF32（float32_matmul_precision=highest，纯 FP32 路径）；
+     --tf32 可选开启；--no-cudnn 可选关闭 cuDNN（换回退 kernel）
+
+崩溃排查顺序（先跑 --epochs 1 快速验证，不崩再跑完整 20）：
+  a. 默认（纯 FP32）
+  b. --no-cudnn
+  c. --fp16
+  d. --batch 1 --no-cudnn
 
 用法：把本文件放到 D:\\Dev\\voiceclone 后运行
-  .venv\\Scripts\\python.exe train_angelina_clone.py [--epochs 20] [--batch 2] [--fp16]
+  .venv\\Scripts\\python.exe train_angelina_clone.py [--epochs 20] [--batch 2] [--fp16] [--tf32] [--no-cudnn]
 
 训练产物：yuyuananjielina_model\\logs_s2_v2\\G_*.pth
 （预处理 1a/1b/1c 已完成，本脚本直接训练。）
@@ -46,6 +54,8 @@ ap = argparse.ArgumentParser()
 ap.add_argument("--epochs", type=int, default=20)
 ap.add_argument("--batch", type=int, default=2)
 ap.add_argument("--fp16", action="store_true")
+ap.add_argument("--tf32", action="store_true", help="启用 TF32（默认关闭，纯 FP32）")
+ap.add_argument("--no-cudnn", action="store_true", help="关闭 cuDNN（换回退 kernel）")
 a = ap.parse_args()
 
 # ── 写训练配置（s2_train import 时读取）────────────────────────────
@@ -61,12 +71,21 @@ with open(CFG, "w", encoding="utf-8") as f:
 sys.argv = ["s2_train.py", "--config", CFG]
 
 import torch  # noqa: E402
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.backends.cudnn.allow_tf32 = True
-torch.set_float32_matmul_precision("medium")
-print("torch %s  cuda %s  fp16=%s batch=%d epochs=%d"
-      % (torch.__version__, torch.version.cuda, a.fp16, a.batch, a.epochs),
-      flush=True)
+if a.no_cudnn:
+    torch.backends.cudnn.enabled = False
+    print("[cfg] cuDNN DISABLED", flush=True)
+if a.tf32:
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+    torch.set_float32_matmul_precision("medium")
+else:
+    # 纯 FP32：Blackwell 上 TF32 matmul 的 backward kernel 有段错误风险
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    torch.set_float32_matmul_precision("highest")
+print("torch %s  cuda %s  fp16=%s batch=%d epochs=%d tf32=%s cudnn=%s"
+      % (torch.__version__, torch.version.cuda, a.fp16, a.batch, a.epochs,
+         a.tf32, not a.no_cudnn), flush=True)
 
 # ── 强制 DataLoader 单进程（s2_train 硬编码 num_workers=5）──────────
 import torch.utils.data as _tud  # noqa: E402
