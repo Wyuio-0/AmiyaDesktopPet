@@ -100,19 +100,6 @@ def _no_scaler(*aa, **kw):
 _amp.GradScaler = _no_scaler
 print("[cfg] GradScaler DISABLED (pure FP32 backward)", flush=True)
 
-# ── 关键规避 2：去掉 DDP ─────────────────────────────────────────
-# 单进程下 s2_train 仍包 DistributedDataParallel，DDP reducer 在 backward
-# 介入并崩溃。把 DDP 替换为"返回原模型"。
-import torch.nn.parallel as _np  # noqa: E402
-
-
-def _no_ddp(model, *aa, **kw):
-    return model
-
-
-_np.DistributedDataParallel = _no_ddp
-print("[cfg] DDP DISABLED (single-process training)", flush=True)
-
 print("torch %s  cuda %s  fp16=%s batch=%d epochs=%d tf32=%s cudnn=%s"
       % (torch.__version__, torch.version.cuda, a.fp16, a.batch, a.epochs,
          a.tf32, not a.no_cudnn), flush=True)
