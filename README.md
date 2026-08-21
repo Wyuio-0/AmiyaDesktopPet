@@ -302,6 +302,27 @@ characters/
     └── ...
 ```
 
+### 一键添加新角色（GUI 入口）
+
+桌宠右键菜单 →「切换人物 → 添加新角色…」，选择素材文件夹即可自动生成角色。
+素材文件夹两种组织方式（支持混合）：
+
+```
+# 方式 1（推荐）：按动作分子目录
+mychar/
+  idle/    *.webm
+  click/   *.webm
+  move/    *.webm
+  ...
+  voice/   *.wav   （可选，语音）
+
+# 方式 2：平铺，脚本按文件名关键词自动分类
+mychar/xxx-Idle-x1.webm、xxx-Click-x1.webm、...   （无法识别的进 idle）
+```
+
+脚本会自动：分类视频 → 复制到 `characters/<key>/` 对应动作目录 → 复制 `voice/*.wav` → 生成 `config.json`（只含实际存在的动作）。核心逻辑在 `pet/add_character.py`，命令行调用方式：
+`python -c "from pet.add_character import add_character; add_character('key','显示名','素材路径')"`
+
 ### config.json 字段说明
 
 ```json
@@ -427,6 +448,7 @@ token 首次运行时自动生成，存在 `%APPDATA%\AmiyaPet\tts_token`，宠�
 │   ├── info_panel.py        # 信息面板（课程表/待办/OCR 集中展示窗口）
 │   ├── ocr.py               # OCR（WinRT 离线优先 / AI 视觉降级）
 │   ├── region_select.py     # 区域框选浮层（截图 OCR 用）
+│   ├── add_character.py     # 一键添加新角色（素材分类 / config 生成）
 │   ├── knowledge.py         # 讲义知识库（切块 + 词频检索，无依赖）
 │   ├── actions.py           # 电脑操控 + 课表/待办工具（白名单安全动作）
 │   ├── hotkey.py            # 全局热键（Win32 RegisterHotKey）

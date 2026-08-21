@@ -1514,13 +1514,50 @@ class PetWindow(QtWidgets.QWidget):
         if not chars:
             act = sub.addAction("未找到其他人物")
             act.setEnabled(False)
-            return
         for char in chars:
             act = sub.addAction(char.display_name)
             act.setCheckable(True)
             act.setChecked(os.path.normcase(char.dir) == current)
             act.triggered.connect(
                 lambda checked=False, path=char.dir: self._switch_character(path))
+        if chars:
+            sub.addSeparator()
+        sub.addAction("添加新角色…", self._add_character_entry)
+
+    def _add_character_entry(self):
+        """GUI 入口：选素材文件夹 → 自动生成新角色。"""
+        src = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "选择角色素材文件夹（内含动画 webm）",
+            os.path.expanduser("~"))
+        if not src:
+            return
+        key, ok = QtWidgets.QInputDialog.getText(
+            self, "角色标识", "角色 key（英文小写，如 amiya2）：")
+        if not ok or not key.strip():
+            return
+        name, ok = QtWidgets.QInputDialog.getText(
+            self, "显示名称", "显示名称（如 能天使）：",
+            text=key.strip())
+        if not ok:
+            return
+        try:
+            from .add_character import add_character
+            result = add_character(key.strip(), name.strip(), src)
+        except ValueError as e:
+            self.raise_()
+            self.bubble.say(str(e), self._body_rect())
+            return
+        except Exception as e:
+            self.raise_()
+            self.bubble.say("添加失败：%s" % type(e).__name__, self._body_rect())
+            return
+        # 角色缓存失效，下次打开「切换人物」能看到新角色
+        self._chars_cache = None
+        self._chars_mtime = None
+        voice = "，语音 %d 条" % result["voice_count"] if result["voice_count"] else ""
+        self._announce("已添加角色「%s」，动作：%s%s。右键菜单即可切换。"
+                       % (result["display_name"], "/".join(result["actions"]),
+                          voice), use_tts=False)
 
     def _add_schedule_menu(self, parent):
         """课程表子菜单：今日课程 / 下一节课 / 本周课表 / 导入。"""
