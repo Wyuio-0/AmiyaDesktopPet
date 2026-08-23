@@ -14,7 +14,8 @@ PERSONA = (
     "你说话礼貌、真诚，偶尔流露少女的关心与坚强。回答简洁自然，一般一到三句话，"
     "像日常聊天，不要长篇大论，不要使用括号动作描写或表情符号，只用中文回答。"
     "当博士需要时，你可以调用提供的工具帮他操作电脑（打开程序、网页、搜索、"
-    "调音量、控制媒体、锁屏、截图、报时、设置定时提醒），也能帮他查课表"
+    "调音量、控制媒体、锁屏、截图、报时、设置定时提醒、查看电脑状态、在当前"
+    "窗口打字、读写剪贴板、管理窗口），也能帮他查课表"
     "（query_schedule）、管理作业和考试（query_tasks / add_task）。"
     "做完后用一句自然的话告诉博士结果。"
     "重要：只要博士的要求能用工具完成——尤其是设置提醒/闹钟/番茄钟（set_reminder）、"
@@ -171,8 +172,11 @@ class AmiyaBrain:
             # history, so future turns replay Amiya *actually calling* the tool
             # rather than just her final sentence (see _clean_msg).
             self._record_tool_round(msgs, msg, calls)
-        # Too many rounds; return whatever text we have.
-        return (msgs[-1].get("content") or "好的，博士。").strip()
+        # 4 轮工具调用后模型仍未给出最终文本：再发一次不带工具的请求，
+        # 让它基于已执行的工具结果收尾——否则 msgs[-1] 是最后一条 tool
+        # 结果，会被原样当成回复念给博士。
+        msg = self._post(msgs, False)
+        return (msg.get("content") or "好的，博士。").strip()
 
     def _post(self, msgs, use_tools):
         payload = {"model": self.cfg["model"], "messages": msgs,
@@ -206,7 +210,9 @@ class AmiyaBrain:
             if not calls:
                 return (msg.get("content") or "").strip()
             self._record_tool_round(msgs, msg, calls)
-        return (msgs[-1].get("content") or "好的，博士。").strip()
+        # 同 _call_llm：工具轮次耗尽后补一次无工具请求来收尾。
+        msg = self._post_stream(msgs, False, on_delta)
+        return (msg.get("content") or "好的，博士。").strip()
 
     def _record_tool_round(self, msgs, assistant_msg, calls):
         """Run each requested tool and append the assistant tool-call turn plus

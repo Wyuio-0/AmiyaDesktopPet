@@ -98,7 +98,54 @@ class TestToolsSchema:
         assert "query_tasks" in names
         assert "add_task" in names
         assert "today_summary" in names
+        assert "system_status" in names
+        assert "type_text" in names
+        assert "clipboard" in names
+        assert "window_control" in names
 
     def test_all_handlers_registered(self):
         for t in actions.TOOLS:
             assert t["function"]["name"] in actions._HANDLERS
+
+
+class TestComputerControl:
+    def test_open_app_unknown(self):
+        out = actions.open_app("不存在的程序xyz")
+        assert "我只能打开" in out
+
+    def test_custom_apps_loaded(self, tmp_path, monkeypatch):
+        p = tmp_path / "apps.json"
+        p.write_text('{"我的程序": "C:\\\\no\\\\such\\\\app.exe"}', encoding="utf-8")
+        monkeypatch.setenv("PET_APPS_FILE", str(p))
+        out = actions.open_app("我的程序")
+        # 路径不存在 -> 明确失败（识别到了但打不开），而不是"不认识"
+        assert "没找到" in out
+
+    def test_system_status_shape(self):
+        out = actions.system_status()
+        assert isinstance(out, str) and "前台窗口" in out
+
+    def test_type_text_empty(self):
+        assert "想让我输入" in actions.type_text("")
+
+    def test_type_text_too_long(self):
+        assert "最多输入" in actions.type_text("x" * 501)
+
+    def test_clipboard_bad_action(self):
+        assert "只支持" in actions.clipboard("paste")
+
+    def test_clipboard_get_is_str(self):
+        out = actions.clipboard("get")
+        assert isinstance(out, str)
+
+    def test_window_control_bad_action(self):
+        out = actions.window_control("explode")
+        assert "只支持" in out
+
+    def test_window_control_no_name(self):
+        out = actions.window_control("minimize")
+        assert "没找到" in out or "先列出窗口" in out
+
+    def test_window_control_list(self):
+        out = actions.window_control("list")
+        assert isinstance(out, str) and "窗口" in out
