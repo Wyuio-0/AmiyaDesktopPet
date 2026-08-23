@@ -109,7 +109,13 @@ class Course:
         return True
 
     def start_time(self, week_no, sections):
-        """第 week_no 周本节课的开始时刻 (hour, minute)，或 None（不在表内/本周不上）。"""
+        """第 week_no 周本节课的开始时刻 (hour, minute)，或 None（不在表内/本周不上）。
+
+        对 sections 里手写的时刻做范围校验（0<=h<24、0<=m<60），非法值返回
+        None——否则调用方（如 window._sched_tick 的 datetime.replace）会因
+        hour=24 之类的值抛 ValueError，而 Qt 定时器槽里的未捕获异常会直接
+        终止整个应用。
+        """
         if not self.active_on(week_no):
             return None
         hhmm = sections.get(str(self.sec_start))
@@ -117,9 +123,12 @@ class Course:
             return None
         try:
             hh, mm = hhmm.split(":")
-            return (int(hh), int(mm))
+            h, m = int(hh), int(mm)
         except (ValueError, TypeError):
             return None
+        if not (0 <= h < 24 and 0 <= m < 60):
+            return None
+        return (h, m)
 
     def display(self, sections=None, show_weeks=True):
         """一行展示文本，例如「1-2节 计算机组成与体系结构A @3区2-217」。

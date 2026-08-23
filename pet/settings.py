@@ -8,6 +8,7 @@ mixed into the version-controlled character definition (config.json). Path:
 
 import json
 import os
+import sys
 
 
 def config_dir():
@@ -30,6 +31,32 @@ def history_path(character_key=None):
     safe = "".join(c if c.isalnum() or c in ("-", "_") else "_"
                    for c in str(character_key))
     return os.path.join(config_dir(), "history_%s.json" % safe)
+
+
+def characters_dirs():
+    """Ordered list of directories that may contain character configs.
+
+    Source runs: the project ``characters/`` folder only.
+    Frozen builds: the ``characters/`` folder next to the .exe (so users can
+    drop in new characters), then the user-data directory (where the
+    "add character" action writes — the bundle itself is read-only), then the
+    copy bundled inside the exe as a last resort.
+    """
+    if getattr(sys, "frozen", False):
+        dirs = []
+        external = os.path.join(os.path.dirname(sys.executable), "characters")
+        if os.path.isdir(external):
+            dirs.append(external)
+        dirs.append(os.path.join(config_dir(), "characters"))
+        try:
+            bundled = os.path.join(sys._MEIPASS, "characters")
+        except AttributeError:
+            bundled = None
+        if bundled and os.path.isdir(bundled):
+            dirs.append(bundled)
+        return dirs
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return [os.path.join(root, "characters")]
 
 
 class Settings:

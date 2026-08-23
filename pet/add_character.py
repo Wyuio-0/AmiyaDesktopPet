@@ -22,9 +22,24 @@
 import json
 import os
 import shutil
+import sys
 
 # 项目根（pet/ 的上级）
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def default_chars_root():
+    """新建角色默认写到哪里。
+
+    Frozen（PyInstaller）构建里项目目录是只读/临时的（_MEIPASS），写进去
+    要么失败要么重启丢失，所以打包版写到用户数据目录
+    （%APPDATA%\\AmiyaPet\\characters，与课表/历史同处）；源码运行写项目
+    characters/。settings.characters_dirs() 会把两个位置都纳入角色扫描。
+    """
+    if getattr(sys, "frozen", False):
+        from .settings import config_dir
+        return os.path.join(config_dir(), "characters")
+    return os.path.join(ROOT, "characters")
 
 # 标准动作集（与 amiya config.json 对齐）
 ACTIONS = ["start", "idle", "click", "drag", "greet", "move",
@@ -110,7 +125,7 @@ def build_config(key, display_name, actions):
     return {
         "name": key,
         "display_name": display_name or key,
-        "description": "%s from Arknights" % display_name or key,
+        "description": "%s from Arknights" % (display_name or key),
         "scale": 1.0,
         "transparent_color": "#FF00FF",
         "actions": action_cfg,
@@ -151,7 +166,7 @@ def add_character(key, display_name, source_dir, chars_root=None):
     if not os.path.isdir(source_dir):
         raise ValueError("素材目录不存在：%s" % source_dir)
 
-    chars_root = chars_root or os.path.join(ROOT, "characters")
+    chars_root = chars_root or default_chars_root()
     target = os.path.join(chars_root, key)
     if os.path.exists(target):
         raise ValueError("角色「%s」已存在，请换一个 key。" % key)

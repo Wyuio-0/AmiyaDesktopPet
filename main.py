@@ -13,7 +13,7 @@ import sys
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from pet import Character, PetWindow
-from pet.settings import Settings
+from pet.settings import Settings, characters_dirs
 
 
 def _app_icon_path():
@@ -26,32 +26,22 @@ def _app_icon_path():
     return path if os.path.isfile(path) else None
 
 
-def _characters_dir():
-    """Locate the characters folder for both source and frozen (exe) runs.
-
-    When frozen, prefer a `characters/` next to the .exe (so users can drop in
-    new characters), otherwise fall back to the copy bundled inside the exe.
-    """
-    if getattr(sys, "frozen", False):
-        external = os.path.join(os.path.dirname(sys.executable), "characters")
-        if os.path.isdir(external):
-            return external
-        return os.path.join(sys._MEIPASS, "characters")
-    return os.path.join(os.path.dirname(__file__), "characters")
-
-
-CHARACTERS_DIR = _characters_dir()
+# 所有可能放置角色配置的目录（打包版：exe 旁 / 用户数据目录 / 内置副本）。
+CHARACTERS_DIRS = characters_dirs()
 
 
 def find_character(name=None):
     if name:
-        path = os.path.join(CHARACTERS_DIR, name)
-        if os.path.isfile(os.path.join(path, "config.json")):
-            return path
+        for base in CHARACTERS_DIRS:
+            path = os.path.join(base, name)
+            if os.path.isfile(os.path.join(path, "config.json")):
+                return path
         sys.exit(f"角色 '{name}' 不存在或缺少 config.json")
-    configs = sorted(glob.glob(os.path.join(CHARACTERS_DIR, "*", "config.json")))
+    configs = sorted(config for base in CHARACTERS_DIRS
+                     for config in glob.glob(
+                         os.path.join(base, "*", "config.json")))
     if not configs:
-        sys.exit(f"在 {CHARACTERS_DIR} 下没有找到任何角色")
+        sys.exit(f"在 {CHARACTERS_DIRS} 下没有找到任何角色")
     return os.path.dirname(configs[0])
 
 

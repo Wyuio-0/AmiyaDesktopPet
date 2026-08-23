@@ -13,11 +13,14 @@ class RegionSelect(QtWidgets.QWidget):
     selected = QtCore.pyqtSignal(object)   # PIL Image（裁剪区域）
     cancelled = QtCore.pyqtSignal()
 
-    def __init__(self, screen_image, screen_geom, parent=None):
+    def __init__(self, screen_image, screen_geom, dpr=1.0, parent=None):
         super().__init__(parent)
+        # screen_image 是目标屏幕的**物理像素**截图；窗口用逻辑尺寸
+        # （screen_geom），绘制时按 dpr 缩放，裁剪时再换算回物理像素，
+        # 保证 HiDPI / 多显示器下截图与遮罩对齐、选区内容正确。
         self._img = screen_image            # PIL Image（全屏）
+        self._dpr = max(1e-3, float(dpr or 1.0))
         self._qimg = self._to_qimage(screen_image)
-        self._origin = (screen_geom.x(), screen_geom.y())
         self._start = None                  # 拖拽起点（窗口坐标）
         self._rect = None                   # 当前选区 QRect
         self.setWindowFlags(
@@ -65,25 +68,40 @@ class RegionSelect(QtWidgets.QWidget):
             self.cancelled.emit()
 
     def _emit_selection(self, rect):
-        x = rect.x() - self._origin[0]
-        y = rect.y() - self._origin[1]
-        w, h = rect.width(), rect.height()
-        crop = self._img.crop((max(0, x), max(0, y), x + w, y + h))
+        d = self._dpr
+        x = int(rect.x() * d)
+        y = int(rect.y() * d)
+        w = int(rect.width() * d)
+        h = int(rect.height() * d)
+        iw, ih = self._img.size
+        x = min(max(x, 0), iw)
+        y = min(max(y, 0), ih)
+        w = min(w, iw - x)
+        h = min(h, ih - y)
+        crop = self._img.crop((x, y, x + w, y + h))
         self.selected.emit(crop)
+        # 选完之后立即关掉全屏遮罩，否则它会一直悬浮在桌面上挡住一切。
+        # （取消路径在 window.py 里已连接 cancelled -> sel.close。）
+        self.close()
 
     # ── 绘制 ─────────────────────────────────────────────────────
 
     def paintEvent(self, _):
         p = QtGui.QPainter(self)
-        p.drawImage(self._origin[0], self._origin[1], self._qimg)
+        iw, ih = self._img.width, self._img.height
+        # 整张物理像素截图缩放绘制到逻辑尺寸的窗口
+        p.drawImage(self.rect(), self._qimg,
+                    QtCore.QRect(0, 0, iw, ih))
         if self._rect is None:
             return
         # 选区外遮罩
         p.fillRect(self.rect(), QtGui.QColor(0, 0, 0, 90))
-        p.drawImage(self._rect, self._qimg,
-                    QtCore.QRect(self._rect.x() - self._origin[0],
-                                 self._rect.y() - self._origin[1],
-                                 self._rect.width(), self._rect.height()))
+        # 把选区内对应的物理像素部分重新画出来（还原为原图）
+        d = self._dpr
+        src = QtCore.QRect(int(self._rect.x() * d), int(self._rect.y() * d),
+                           int(self._rect.width() * d),
+                           int(self._rect.height() * d))
+        p.drawImage(self._rect, self._qimg, src)
         p.setPen(QtGui.QPen(QtGui.QColor(255, 215, 0), 2))
         p.drawRect(self._rect)
         # 尺寸提示

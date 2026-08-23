@@ -68,12 +68,15 @@ def parse_datetime(text, now=None):
     m = _RE_WEEK.search(text)
     if day is None and m:
         wd = _weekday_num(m.group(3))
-        days_ahead = (wd - today.isoweekday()) % 7
         if m.group(1) == "下":
-            day = today + timedelta(days=7 + days_ahead)  # 下一周的该星期
+            # "下周" = 今天所在周之后的那一周。
+            # 先求下一个周一（今天就是周一则 +7），再加 wd-1 天。
+            days_to_next_monday = (7 - today.isoweekday()) % 7 + 1
+            day = today + timedelta(days=days_to_next_monday + (wd - 1))
         else:
-            if days_ahead == 0:
-                days_ahead = 7   # 今天就是这个星期 -> 下周同一天
+            # "周X" = 最近的下一个 X：今天就是 X 则今天（不推到下周），
+            # 否则取本周/下周里最近的那个 X。
+            days_ahead = (wd - today.isoweekday()) % 7
             day = today + timedelta(days=days_ahead)
 
     # X月X日（可带年份）

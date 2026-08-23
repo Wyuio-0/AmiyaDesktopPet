@@ -116,6 +116,9 @@ _clone_pid = None            # PID of the serve.py process (always set, even whe
                               # reusing a process we didn't launch, so shutdown
                               # can always kill it)
 _clone_last_used = 0.0       # timestamp of last TTS request that used the clone
+_manual_start = False        # True when the user started it from the menu; a
+                              # manually started service must NOT be auto-stopped
+                              # by the idle timeout (the model takes ~30s to load)
 
 # Last-known clone service state, cached so menu code never blocks on a /ping.
 # Refreshed off the UI thread by the background probe (pet.window.CloneStateProbe)
@@ -209,8 +212,14 @@ def maybe_stop_idle_clone(idle_seconds: float = 600) -> bool:
     Returns True if the service was stopped, False otherwise.  Call this
     periodically from the main loop (e.g. every 30 s) to free GPU memory
     when TTS hasn't been used in a while.
+
+    A service the user started manually from the context menu is never
+    auto-stopped — they explicitly asked for it and reloading the model takes
+    ~30 s; only automatically-launched instances get an idle timeout.
     """
     global _clone_last_used, _clone_proc
+    if _manual_start:
+        return False
     if _clone_last_used <= 0:
         return False
     elapsed = time.time() - _clone_last_used
@@ -263,7 +272,7 @@ def _find_pid_on_port(port):
     return None
 
 
-def start_clone_service(clone_dir=None, character=None):
+def start_clone_service(clone_dir=None, character=None, manual=False):
     """Launch the local voice-clone service if it isn't already running.
 
     Non-blocking: the model load takes ~30s. Until it's ready, replies use
@@ -274,8 +283,13 @@ def start_clone_service(clone_dir=None, character=None):
     `--character`, so the service loads that character's fine-tuned model and
     reference audio. This is what makes the trained voice (not a generic
     zero-shot clone) come out.
+
+    `manual=True` marks the service as user-started: the idle auto-stop then
+    leaves it alone until the user stops it explicitly from the menu.
     """
-    global _clone_proc, _clone_pid
+    global _clone_proc, _clone_pid, _manual_start
+    if manual:
+        _manual_start = True
     if clone_ready():
         # Service is up. Verify it loaded the character we need; if not,
         # restart it so the correct fine-tuned model is used.
@@ -333,7 +347,8 @@ def stop_clone_service(timeout=5):
 def _stop_clone_service(timeout=5):
     """Internal: stop the clone subprocess + free the port if a stale listener
     remains."""
-    global _clone_proc, _clone_pid
+    global _clone_proc, _clone_pid, _manual_start
+    _manual_start = False   # 停掉后回到「可自动停」状态，下次自动拉起照常超时
     # 1. Kill by PID — always works, even when we reused a process we didn't
     #    launch (in which case _clone_proc is None but _clone_pid is tracked).
     if _clone_pid is not None:

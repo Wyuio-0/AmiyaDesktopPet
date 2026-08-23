@@ -20,6 +20,10 @@ __pycache__/
 .pytest_cache/
 .verify_tmp/
 
+# Local test/diagnostic scratch (pytest basetemp, chars_root=True bug artifacts)
+.diagtmp/
+True/
+
 # AI config (contains API key — keep local only)
 **/ai_config.json
 

@@ -19,7 +19,7 @@ from .info_panel import InfoPanel, PAGE_OCR, PAGE_SCHEDULE, PAGE_TASKS
 from .ocr import OcrError, ocr_image, summarize_ai
 from .region_select import RegionSelect
 from .schedule import Schedule
-from .settings import Settings
+from .settings import Settings, characters_dirs
 from .tasks import Tasks
 from .tasks_ui import TaskDialog, TaskListDialog
 from .timers import CountdownBadge, DurationDialog, PomodoroDialog
@@ -187,6 +187,7 @@ class PetWindow(QtWidgets.QWidget):
                         and self.prefs.get("tts_on", True)
                         and tts.available())
         self._tts_worker = None
+        self._tts_gen = 0   # 递增令牌：旧 TTS 合成完成时若已被新请求取代则丢弃
         self._use_clone = bool(self._tts_cfg.get("use_clone", True))
         # Background probe keeps the clone-state label fresh without ever
         # blocking the GUI thread on /ping (see CloneStateProbe).
@@ -750,17 +751,37 @@ class PetWindow(QtWidgets.QWidget):
         self._announce("好的博士，已经停下计时了。", use_tts=True)
 
     def _setup_hotkey(self):
-        """Register a system-wide shortcut to summon the chat box (Win only)."""
+        """Register system-wide shortcuts (Win only).
+
+        Chat / translate / OCR hotkeys can be overridden per-character via
+        config.json "hotkey" / "hotkey_translate" / "hotkey_ocr". Duplicate
+        specs are registered only once (chat wins), so a config that sets
+        "hotkey": "alt+t" can't silently kill the translate shortcut — and
+        the chat hotkey itself can't be lost to a fixed default collision.
+        """
         self._hotkey_spec = self.char.cfg.get("hotkey", "alt+a")
+        self._translate_hotkey_spec = self.char.cfg.get(
+            "hotkey_translate", "alt+t")
+        self._ocr_hotkey_spec = self.char.cfg.get("hotkey_ocr", "alt+s")
+        self.hotkey = None
+        self._translate_hotkey = None
+        self._ocr_hotkey = None
         # winId() forces native window creation so we have a real HWND.
-        self.hotkey = GlobalHotkey(int(self.winId()), self._hotkey_spec, self)
-        self.hotkey.activated.connect(self._toggle_chat)
-        # Translation hotkey — reads clipboard and translates (Win only).
-        self._translate_hotkey = GlobalHotkey(int(self.winId()), "alt+t", self)
-        self._translate_hotkey.activated.connect(self._translate_clipboard)
-        # OCR hotkey — region screenshot -> translate (Win only).
-        self._ocr_hotkey = GlobalHotkey(int(self.winId()), "alt+s", self)
-        self._ocr_hotkey.activated.connect(lambda: self._ocr_flow("translate"))
+        hwnd = int(self.winId())
+        seen = set()
+        for spec, attr, slot in (
+                (self._hotkey_spec, "hotkey", self._toggle_chat),
+                (self._translate_hotkey_spec, "_translate_hotkey",
+                 self._translate_clipboard),
+                (self._ocr_hotkey_spec, "_ocr_hotkey",
+                 lambda: self._ocr_flow("translate"))):
+            if not spec or spec in seen:
+                continue
+            seen.add(spec)
+            hk = GlobalHotkey(hwnd, spec, self)
+            if hk.active:
+                hk.activated.connect(slot)
+                setattr(self, attr, hk)
         self._ocr_worker = None
 
     def _toggle_chat(self):
@@ -810,14 +831,27 @@ class PetWindow(QtWidgets.QWidget):
     def _ocr_flow(self, mode):
         """全屏截图 -> 拖拽框选区域 -> OCR -> 翻译/总结（后台线程）。"""
         self._ocr_mode = mode
+        screen = self.screen() or QtWidgets.QApplication.primaryScreen()
+        if screen is None:
+            self.raise_()
+            self.bubble.say("截图失败：找不到可用的屏幕。", self._body_rect())
+            return
+        geo = screen.geometry()            # 逻辑坐标
+        dpr = screen.devicePixelRatio()    # 物理/逻辑 缩放比
+        # ImageGrab 按物理像素工作，且无参时只抓主屏。这里显式抓桌宠所在
+        # 屏幕的物理区域：多显示器时截图与遮罩才不会错位，HiDPI 缩放下
+        # 选区的裁剪坐标也才能和物理像素对上（RegionSelect 按 dpr 换算）。
+        bbox = (int(geo.x() * dpr), int(geo.y() * dpr),
+                int((geo.x() + geo.width()) * dpr),
+                int((geo.y() + geo.height()) * dpr))
         try:
             from PIL import ImageGrab
-            img = ImageGrab.grab()
+            img = ImageGrab.grab(bbox=bbox)
         except Exception as e:
             self.raise_()
             self.bubble.say("截图失败：%s" % type(e).__name__, self._body_rect())
             return
-        sel = RegionSelect(img, self.screen().geometry())
+        sel = RegionSelect(img, geo, dpr=dpr)
         sel.selected.connect(self._on_ocr_region)
         sel.cancelled.connect(sel.close)
         sel.show()
@@ -869,27 +903,32 @@ class PetWindow(QtWidgets.QWidget):
     # ------------------------------------------------------------------ #
 
     def _available_characters(self):
-        """All characters found under characters_dir, cached by directory mtime.
+        """All characters found across every character directory (bundled +
+        user data), cached by the tuple of directory mtimes.
 
         The cache only invalidates when a character folder appears/disappears,
-        so after the first call the per-right-click cost is a single stat()
-        instead of scanning and JSON-parsing every character.
+        so after the first call the per-right-click cost is one stat() per
+        directory instead of scanning and JSON-parsing every character.
         """
+        dirs = characters_dirs()
         try:
-            mtime = os.path.getmtime(self.characters_dir)
+            key = tuple(
+                (d, os.path.getmtime(d)) if os.path.isdir(d) else (d, None)
+                for d in dirs)
         except OSError:
-            mtime = None
-        if self._chars_cache is not None and self._chars_mtime == mtime:
+            key = None
+        if self._chars_cache is not None and self._chars_mtime == key:
             return self._chars_cache
         chars = []
-        pattern = os.path.join(self.characters_dir, "*", "config.json")
-        for cfg_path in sorted(glob.glob(pattern)):
-            try:
-                chars.append(Character(os.path.dirname(cfg_path)))
-            except Exception:
-                pass
+        for base in dirs:
+            for cfg_path in sorted(
+                    glob.glob(os.path.join(base, "*", "config.json"))):
+                try:
+                    chars.append(Character(os.path.dirname(cfg_path)))
+                except Exception:
+                    pass
         self._chars_cache = chars
-        self._chars_mtime = mtime
+        self._chars_mtime = key
         return chars
 
     def _switch_character(self, char_dir):
@@ -916,11 +955,20 @@ class PetWindow(QtWidgets.QWidget):
             self._translate_hotkey.unregister()
         if getattr(self, "_ocr_hotkey", None):
             self._ocr_hotkey.unregister()
-        # Stop in-flight translation worker.
-        if self._trans_worker is not None and self._trans_worker.isRunning():
-            self._trans_worker.requestInterruption()
-            self._trans_worker.wait(3000)
+        # Stop in-flight workers so their callbacks can't touch the new
+        # character's state (old brain / old voice player). terminate() is the
+        # last-resort fallback when a thread is stuck in blocking I/O.
+        for w in (self._worker, self._tts_worker, self._trans_worker,
+                  self._ocr_worker):
+            if w is not None and w.isRunning():
+                w.requestInterruption()
+                if not w.wait(3000):
+                    w.terminate()
+                    w.wait(1000)
+        self._worker = None
+        self._tts_worker = None
         self._trans_worker = None
+        self._ocr_worker = None
 
         self.char = new_char
         self.characters_dir = os.path.dirname(new_char.dir)
@@ -1008,6 +1056,11 @@ class PetWindow(QtWidgets.QWidget):
         # already modifying brain.history, so starting a second one would
         # interleave turns and corrupt the conversation.
         if self._worker is not None and self._worker.isRunning():
+            # 别静默丢消息：用翻译浮窗提示「稍等」——它不碰正在流式的气泡，
+            # 短时显示后自动隐藏。
+            self.trans_popup.show_translation(
+                "", "博士稍等，我还在想上一个问题…", self._body_rect(),
+                auto_ms=2500)
             return
         self.trans_popup.hide()
         # Freeze the bubble anchor for this whole reply so her idle animation
@@ -1076,6 +1129,12 @@ class PetWindow(QtWidgets.QWidget):
             # spinning up for every reply). Here we only pass the worker its
             # clone preference: it uses the clone when the service is already
             # running and otherwise falls back to edge-tts.
+            self._tts_gen += 1
+            gen = self._tts_gen
+            # 快速连续回复时，旧 worker 若还在合成，先请求中断（不阻塞 UI）；
+            # 真正防止音频重叠靠 gen 令牌——旧结果到达时直接丢弃不播放。
+            if self._tts_worker is not None and self._tts_worker.isRunning():
+                self._tts_worker.requestInterruption()
             self._tts_worker = tts.TtsWorker(
                 text,
                 voice=self._tts_cfg.get("voice") or tts.DEFAULT_VOICE,
@@ -1087,12 +1146,14 @@ class PetWindow(QtWidgets.QWidget):
                 parent=self,
             )
             self._tts_worker.done.connect(
-                lambda path: self._on_tts_done(path, fallback))
+                lambda path: self._on_tts_done(path, fallback, gen))
             self._tts_worker.start()
         else:
             self.voice.play(fallback)
 
-    def _on_tts_done(self, path, fallback="reply"):
+    def _on_tts_done(self, path, fallback="reply", gen=None):
+        if gen is not None and gen != self._tts_gen:
+            return  # 这条合成已被更新的请求取代，丢弃以免音频重叠
         if path:
             self.voice.play_file(path)
         else:  # synthesis failed (offline etc.) -> in-game line
@@ -1394,6 +1455,29 @@ class PetWindow(QtWidgets.QWidget):
             return self._alpha[y, x] > 40
         return False
 
+    def nativeEvent(self, eventType, message):
+        """让透明区域的点击真正穿透到桌面（Windows WM_NCHITTEST 命中测试）。
+
+        mousePressEvent 里的 e.ignore() 只让 Qt 忽略事件，并不会把点击交给
+        下层窗口——透明背景会一直挡住桌面图标。对 WM_NCHITTEST 返回
+        HTTRANSPARENT，Windows 才会把鼠标消息传给下层窗口；角色本体
+        （不透明像素）返回客户端区域，照常响应点击/拖拽。
+        """
+        if eventType == b"windows_generic_MSG":
+            try:
+                import ctypes
+                from ctypes import wintypes
+                msg = wintypes.MSG.from_address(int(message))
+                if msg.message == 0x0084:  # WM_NCHITTEST
+                    x = ctypes.c_short(msg.lParam & 0xFFFF).value
+                    y = ctypes.c_short((msg.lParam >> 16) & 0xFFFF).value
+                    pos = self.mapFromGlobal(QtCore.QPoint(x, y))
+                    if not self._opaque_at(pos):
+                        return True, -1    # HTTRANSPARENT -> 穿透到下层
+            except Exception:
+                pass  # 命中测试失败就按默认行为处理，不让它崩应用
+        return super().nativeEvent(eventType, message)
+
     # ------------------------------------------------------------------ #
     # Interactions                                                         #
     # ------------------------------------------------------------------ #
@@ -1618,10 +1702,15 @@ class PetWindow(QtWidgets.QWidget):
             self._clone_probe = None
 
     def _start_clone(self):
-        """Manually start the voice-clone service (model load ~30s)."""
+        """Manually start the voice-clone service (model load ~30s).
+
+        manual=True：用户主动启动的服务不会被 10 分钟空闲自动停止——
+        加载模型要 ~30s，被悄悄停掉会非常恼人；要释放显存请从菜单手动停。
+        """
         was_running = tts.clone_state() == "running"
         ok = tts.start_clone_service(
-            self._tts_cfg.get("clone_dir"), character=self._clone_character)
+            self._tts_cfg.get("clone_dir"), character=self._clone_character,
+            manual=True)
         if ok and not was_running:
             tts.set_clone_state("starting")   # label updates immediately
         self._schedule_clone_probe()          # confirm 'starting' -> 'running'
@@ -1701,7 +1790,8 @@ class PetWindow(QtWidgets.QWidget):
         # alive after the window is gone. requestInterruption() flags the
         # worker to bail out of blocking I/O early; terminate() is the
         # last-resort fallback when the thread is stuck anyway.
-        for w in (self._worker, self._tts_worker, self._trans_worker):
+        for w in (self._worker, self._tts_worker, self._trans_worker,
+                  self._ocr_worker):
             if w is not None and w.isRunning():
                 w.requestInterruption()
                 if not w.wait(3000):
