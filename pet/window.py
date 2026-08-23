@@ -920,13 +920,21 @@ class PetWindow(QtWidgets.QWidget):
         if self._chars_cache is not None and self._chars_mtime == key:
             return self._chars_cache
         chars = []
+        seen = set()
         for base in dirs:
             for cfg_path in sorted(
                     glob.glob(os.path.join(base, "*", "config.json"))):
                 try:
-                    chars.append(Character(os.path.dirname(cfg_path)))
+                    ch = Character(os.path.dirname(cfg_path))
                 except Exception:
-                    pass
+                    continue
+                # 多目录（exe旁 / 用户数据 / 内置）可能含同名角色：
+                # 按键去重并保留第一个，即 characters_dirs() 中靠前的目录优先。
+                key = os.path.normcase(ch.key)
+                if key in seen:
+                    continue
+                seen.add(key)
+                chars.append(ch)
         self._chars_cache = chars
         self._chars_mtime = key
         return chars
