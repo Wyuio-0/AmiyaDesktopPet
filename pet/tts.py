@@ -239,9 +239,23 @@ def _resolve_clone_dir(base_dir):
     This lets packaging (installer / zip) put voiceclone next to the exe and set
     a relative clone_dir in the character config — no env var or hardcoded path
     needed.
+
+    Frozen fallback: 从 exe 目录**逐级向上**找第一个含 <dir>/serve.py 的位置。
+    覆盖两种布局：① voiceclone 放在 exe 旁（安装版）；② 开发布局
+    （exe 在 dist\\DesktopPet、voiceclone 在项目根的 junction，往上两级）。
     """
     if base_dir and not os.path.isabs(base_dir):
         if getattr(sys, "frozen", False):
+            root = os.path.dirname(sys.executable)
+            for _ in range(5):
+                cand = os.path.join(root, base_dir)
+                if os.path.isfile(os.path.join(cand, "serve.py")):
+                    return os.path.normpath(cand)
+                parent = os.path.dirname(root)
+                if parent == root:
+                    break
+                root = parent
+            # 都没找到：退回 exe 目录（启动时自然报"请检查部署"）
             root = os.path.dirname(sys.executable)
         else:
             # Script is at pet/tts.py, project root is one level up.
