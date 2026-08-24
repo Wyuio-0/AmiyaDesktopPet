@@ -1,11 +1,9 @@
 """Frameless, always-on-top, click-through-transparent desktop pet window."""
 
-import ctypes
 import glob
 import json
 import os
 import random
-import sys
 from datetime import date, datetime, timedelta
 
 import cv2
@@ -21,7 +19,7 @@ from .info_panel import InfoPanel, PAGE_OCR, PAGE_SCHEDULE, PAGE_TASKS
 from .ocr import OcrError, ocr_image, summarize_ai
 from .region_select import RegionSelect
 from .schedule import Schedule
-from .settings import Settings, characters_dirs, config_dir
+from .settings import Settings, characters_dirs
 from .tasks import Tasks
 from .tasks_ui import TaskDialog, TaskListDialog
 from .timers import CountdownBadge, DurationDialog, PomodoroDialog
@@ -43,24 +41,6 @@ TYPE_STEP = 1
 READ_MS_PER_CHAR = 250
 READ_MS_MIN = 4000
 READ_MS_MAX = 20000
-
-
-def _simulate_ctrl_c():
-    """Simulate Ctrl+C via keybd_event so the focused window copies selection.
-
-    Used by 划词翻译 (selection translation): the user selects text in any
-    app, presses the hotkey, and we copy it for them without them touching
-    the keyboard shortcuts of that app. Returns False off Windows.
-    """
-    if sys.platform != "win32":
-        return False
-    u = ctypes.windll.user32
-    VK_CONTROL, VK_C = 0x11, 0x43
-    u.keybd_event(VK_CONTROL, 0, 0, 0)   # Ctrl down
-    u.keybd_event(VK_C, 0, 0, 0)
-    u.keybd_event(VK_C, 0, 2, 0)         # C up
-    u.keybd_event(VK_CONTROL, 0, 2, 0)   # Ctrl up
-    return True
 
 
 class CloneStateProbe(QtCore.QThread):
@@ -773,9 +753,8 @@ class PetWindow(QtWidgets.QWidget):
     def _setup_hotkey(self):
         """Register system-wide shortcuts (Win only).
 
-        Chat / translate / OCR / selection-translate hotkeys can be overridden
-        per-character via config.json "hotkey" / "hotkey_translate" /
-        "hotkey_ocr" / "hotkey_sel". Duplicate
+        Chat / translate / OCR hotkeys can be overridden per-character via
+        config.json "hotkey" / "hotkey_translate" / "hotkey_ocr". Duplicate
         specs are registered only once (chat wins), so a config that sets
         "hotkey": "alt+t" can't silently kill the translate shortcut — and
         the chat hotkey itself can't be lost to a fixed default collision.
@@ -784,11 +763,9 @@ class PetWindow(QtWidgets.QWidget):
         self._translate_hotkey_spec = self.char.cfg.get(
             "hotkey_translate", "alt+t")
         self._ocr_hotkey_spec = self.char.cfg.get("hotkey_ocr", "alt+s")
-        self._sel_hotkey_spec = self.char.cfg.get("hotkey_sel", "alt+q")
         self.hotkey = None
         self._translate_hotkey = None
         self._ocr_hotkey = None
-        self._sel_hotkey = None
         # winId() forces native window creation so we have a real HWND.
         hwnd = int(self.winId())
         seen = set()
@@ -797,9 +774,7 @@ class PetWindow(QtWidgets.QWidget):
                 (self._translate_hotkey_spec, "_translate_hotkey",
                  self._translate_clipboard),
                 (self._ocr_hotkey_spec, "_ocr_hotkey",
-                 lambda: self._ocr_flow("translate")),
-                (self._sel_hotkey_spec, "_sel_hotkey",
-                 self._select_translate)):
+                 lambda: self._ocr_flow("translate"))):
             if not spec or spec in seen:
                 continue
             seen.add(spec)
@@ -808,23 +783,6 @@ class PetWindow(QtWidgets.QWidget):
                 hk.activated.connect(slot)
                 setattr(self, attr, hk)
         self._ocr_worker = None
-        # 诊断：把每个热键的注册结果写进 hotkeys.log（调试 Alt+Q 无反应用）。
-        try:
-            regs = []
-            for spec, attr, _s in (
-                    (self._hotkey_spec, "hotkey", None),
-                    (self._translate_hotkey_spec, "_translate_hotkey", None),
-                    (self._ocr_hotkey_spec, "_ocr_hotkey", None),
-                    (self._sel_hotkey_spec, "_sel_hotkey", None)):
-                h = getattr(self, attr, None)
-                regs.append("%s=%s" % (spec, bool(h) and h.active))
-            with open(os.path.join(config_dir(), "hotkeys.log"), "a",
-                      encoding="utf-8") as f:
-                f.write("[%s] %s\n" % (
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    ", ".join(regs)))
-        except Exception:
-            pass
 
     def _toggle_chat(self):
         """Hotkey action: pop the input if hidden, else dismiss it."""
@@ -865,61 +823,6 @@ class PetWindow(QtWidgets.QWidget):
         self.bubble.hide()
         rect = self._chat_anchor or self._body_rect()
         self.trans_popup.show_translation(source, translated, rect)
-
-    # -- 划词翻译：选中文字 -> Alt+Q -> 自动复制 -> 翻译 -> 光标旁气泡 -----
-
-    def _select_translate(self):
-        """框选网页/文档文字后按热键，模拟 Ctrl+C 取词翻译。
-
-        剪贴板会在取词后自动还原；翻译气泡显示在鼠标位置附近。取词是
-        异步的（等目标程序把选中文字放进剪贴板），期间不阻塞界面。
-        任何异常都会记入 hotkeys.log，避免打包版静默失败。
-        """
-        try:
-            self._do_select_translate()
-        except Exception:
-            import traceback
-            try:
-                with open(os.path.join(config_dir(), "hotkeys.log"), "a",
-                          encoding="utf-8") as f:
-                    f.write("[%s] 划词翻译异常:\n%s\n" % (
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        traceback.format_exc()))
-            except Exception:
-                pass
-
-    def _do_select_translate(self):
-        self.input.hide()
-        self.bubble.hide()
-        clipboard = QtWidgets.QApplication.clipboard()
-        saved = clipboard.text() or ""
-        if not _simulate_ctrl_c():
-            self.raise_()
-            self.bubble.say("无法模拟复制，请手动 Ctrl+C 后按 Alt+T。",
-                            self._body_rect())
-            return
-
-        def grab(attempt=0):
-            text = (clipboard.text() or "").strip()
-            # 慢剪贴板（Office/旧 PDF 阅读器）可能 250ms 内还没写入：
-            # 空结果再等一次，仍为空才提示用户。
-            if not text and attempt == 0:
-                QtCore.QTimer.singleShot(600, lambda: grab(1))
-                return
-            try:
-                clipboard.setText(saved)      # 还原用户原来的剪贴板
-            except Exception:
-                pass
-            if not text:
-                self.raise_()
-                self.bubble.say(
-                    "请先在网页或文档里选中要翻译的文字。", self._body_rect())
-                return
-            pos = QtGui.QCursor.pos()
-            self._chat_anchor = QtCore.QRect(pos.x(), pos.y(), 1, 1)
-            self._do_translate(text)
-
-        QtCore.QTimer.singleShot(250, grab)
 
     # ------------------------------------------------------------------ #
     # OCR screenshot (region select -> recognize -> translate/summarize)   #
@@ -1060,8 +963,6 @@ class PetWindow(QtWidgets.QWidget):
             self._translate_hotkey.unregister()
         if getattr(self, "_ocr_hotkey", None):
             self._ocr_hotkey.unregister()
-        if getattr(self, "_sel_hotkey", None):
-            self._sel_hotkey.unregister()
         # Stop in-flight workers so their callbacks can't touch the new
         # character's state (old brain / old voice player). terminate() is the
         # last-resort fallback when a thread is stuck in blocking I/O.
@@ -1625,11 +1526,6 @@ class PetWindow(QtWidgets.QWidget):
         hint = ("（%s）" % self._hotkey_spec.title()
                 if getattr(self, "hotkey", None) and self.hotkey.active else "")
         m.addAction("和%s聊天…" % self.char.display_name + hint, self.open_chat)
-        sel_hint = self._sel_hotkey_spec.title()
-        if not (getattr(self, "_sel_hotkey", None)
-                and self._sel_hotkey.active):
-            sel_hint += "（未注册）"
-        m.addAction("划词翻译（%s）" % sel_hint, self._select_translate)
         m.addAction("翻译剪贴板（Alt+T）", self._translate_clipboard)
         m.addAction("忘记对话", self._forget_chat)
         m.addAction("模型配置…", self._open_ai_settings)
@@ -1891,8 +1787,6 @@ class PetWindow(QtWidgets.QWidget):
             self._translate_hotkey.unregister()
         if getattr(self, "_ocr_hotkey", None):
             self._ocr_hotkey.unregister()
-        if getattr(self, "_sel_hotkey", None):
-            self._sel_hotkey.unregister()
         self.voice.stop()
         # Stop the clone-state probe (short-lived /ping thread) so it never
         # outlives the window; it is at most one /ping timeout long.
