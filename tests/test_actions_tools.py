@@ -108,6 +108,40 @@ class TestToolsSchema:
             assert t["function"]["name"] in actions._HANDLERS
 
 
+class TestAppWhitelist:
+    def test_add_list_update_remove(self, tmp_path, monkeypatch):
+        p = tmp_path / "apps.json"
+        monkeypatch.setenv("PET_APPS_FILE", str(p))
+        # 添加
+        ok, msg = actions.add_custom_app("VS Code", r"C:\Program Files\Code.exe")
+        assert ok and "加入白名单" in msg
+        apps = actions.list_custom_apps()
+        assert apps["VS Code"] == r"C:\Program Files\Code.exe"
+        # 同名覆盖 -> 更新路径
+        ok2, msg2 = actions.add_custom_app("VS Code", r"D:\other\Code.exe")
+        assert ok2 and "更新" in msg2
+        assert actions.list_custom_apps()["VS Code"] == r"D:\other\Code.exe"
+        # 文件确实写入了（新进程也能读到）
+        assert '"VS Code"' in p.read_text(encoding="utf-8")
+        # 删除
+        ok3, msg3 = actions.remove_custom_app("VS Code")
+        assert ok3 and "移除" in msg3
+        assert actions.list_custom_apps() == {}
+        # 空参数 / 不存在的名字
+        ok4, _ = actions.add_custom_app("", "x.exe")
+        assert not ok4
+        ok5, msg5 = actions.remove_custom_app("不存在")
+        assert not ok5 and "没有" in msg5
+
+    def test_add_custom_app_then_open(self, tmp_path, monkeypatch):
+        """写入白名单后 open_app 能识别（走 launch 失败分支，不是"不认识"）。"""
+        p = tmp_path / "apps.json"
+        monkeypatch.setenv("PET_APPS_FILE", str(p))
+        actions.add_custom_app("测试程序", r"C:\no\such\app.exe")
+        out = actions.open_app("测试程序")
+        assert "没找到" in out
+
+
 class TestComputerControl:
     def test_open_app_unknown(self):
         out = actions.open_app("不存在的程序xyz")

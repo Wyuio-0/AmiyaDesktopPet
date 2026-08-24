@@ -160,7 +160,9 @@ set PET_AI_MODEL=deepseek-chat                # 可选
 
 **安全边界**：仅开放上述操作，无任意命令执行、无文件删除、无关机/重启。程序名走字典白名单，无法启动任意可执行文件。
 
-- **自定义程序**：编辑 `%APPDATA%\AmiyaPet\apps.json`（`{"名字": "程序路径或 exe 名"}`），阿米娅就能打开你配置的程序（如 `{"VS Code": "D:\\Program Files\\Microsoft VS Code\\Code.exe"}`）。
+- **自定义程序**：右键菜单 → **应用白名单…** 图形化添加（选 `.exe` + 起个名字即可），
+  数据存 `%APPDATA%\AmiyaPet\apps.json`（`{"名字": "程序路径或 exe 名"}`），
+  也可直接编辑该文件（如 `{"VS Code": "D:\\Program Files\\Microsoft VS Code\\Code.exe"}`）。
 - **打字** 输入到当前焦点窗口，误输可用 `Ctrl+Z` 撤销；剪贴板读取限制 2000 字、写入限制 10000 字。
 - **窗口管理** 中的"关闭"只是发送关闭请求（`WM_CLOSE`），相当于点窗口右上角 ×，可随时重新打开。
 

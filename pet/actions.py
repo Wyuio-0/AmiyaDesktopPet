@@ -72,6 +72,55 @@ def _load_custom_apps():
     return custom
 
 
+def list_custom_apps():
+    """当前白名单 {名字: 目标} 的副本（可安全修改，不影响缓存）。"""
+    return dict(_load_custom_apps())
+
+
+def _save_custom_apps(apps):
+    """把整个白名单原子写回 apps.json 并刷新缓存；成功返回 True。"""
+    path = _custom_apps_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(apps, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+        _CUSTOM_APPS_CACHE[path] = (os.path.getmtime(path), dict(apps))
+        return True
+    except Exception:
+        return False
+
+
+def add_custom_app(name, target):
+    """添加/更新一个自定义程序到白名单。返回 (ok, message)。"""
+    name = (name or "").strip()
+    target = (target or "").strip()
+    if not name or not target:
+        return False, "名字和程序路径都不能为空。"
+    if len(name) > 30:
+        return False, "名字太长啦，最多 30 个字。"
+    apps = _load_custom_apps()
+    existed = name in apps
+    apps[name] = target
+    if not _save_custom_apps(apps):
+        return False, "写入白名单失败，请检查 %APPDATA%\\AmiyaPet 目录权限。"
+    return (True, "已更新「%s」的程序路径。" % name if existed
+            else "已把「%s」加入白名单，阿米娅现在可以打开它了。" % name)
+
+
+def remove_custom_app(name):
+    """从白名单删除一个程序。返回 (ok, message)。"""
+    name = (name or "").strip()
+    apps = _load_custom_apps()
+    if name not in apps:
+        return False, "白名单里没有「%s」。" % name
+    del apps[name]
+    if not _save_custom_apps(apps):
+        return False, "写入白名单失败。"
+    return True, "已从白名单移除「%s」。" % name
+
+
 def _resolve_app_paths(exe):
     """按 Windows「App Paths」注册表解析 exe 名 -> 完整路径（未安装返回 None）。"""
     if not _IS_WIN or not exe:
@@ -124,8 +173,8 @@ def open_app(name):
     target = all_apps.get(name) or all_apps.get(key)
     if not target:
         builtin = "、".join(sorted(set(all_apps.values())))
-        return ("我只能打开这些程序：%s。想要更多，可以在 apps.json（"
-                "%%APPDATA%%\\AmiyaPet\\apps.json）里添加自定义程序。" % builtin)
+        return ("我只能打开这些程序：%s。想要更多，可以在右键菜单 → "
+                "应用白名单… 里添加自定义程序。" % builtin)
     try:
         if _launch(target):
             return f"已经为博士打开{name}了。"

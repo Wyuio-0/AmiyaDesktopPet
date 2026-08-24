@@ -11,6 +11,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from .ai import AmiyaBrain
 from .ai_settings import AiSettingsDialog
+from .apps_ui import AppWhitelistDialog
 from .character import Character
 from .chat import InputBar, ReplyWorker, SpeechBubble
 from .frames import key_frame
@@ -1529,6 +1530,7 @@ class PetWindow(QtWidgets.QWidget):
         m.addAction("翻译剪贴板（Alt+T）", self._translate_clipboard)
         m.addAction("忘记对话", self._forget_chat)
         m.addAction("模型配置…", self._open_ai_settings)
+        m.addAction("应用白名单…", self._open_app_whitelist)
         if not self.brain.online:
             status = "AI 离线（用内置台词）"
         elif self.brain.cfg.get("allow_actions", True):
@@ -1563,6 +1565,10 @@ class PetWindow(QtWidgets.QWidget):
                                self.char.display_name)
         dlg.saved.connect(self._apply_ai_settings)
         dlg.exec_()
+
+    def _open_app_whitelist(self):
+        """打开应用白名单管理对话框（添加/删除阿米娅可启动的程序）。"""
+        AppWhitelistDialog(self).exec_()
 
     def _apply_ai_settings(self, cfg):
         old_history = self.brain.history
