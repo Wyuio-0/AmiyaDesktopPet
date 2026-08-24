@@ -8,13 +8,85 @@
 
 from datetime import datetime
 
+import html as _html
+
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from . import theme
+from .schedule import WEEKDAY_NAMES, _PARITY_LABEL
 
 PAGE_SCHEDULE = "schedule"
 PAGE_TASKS = "tasks"
 PAGE_OCR = "ocr"
+
+
+def _esc(t):
+    return _html.escape(str(t))
+
+
+def _day_head(name):
+    """Markdown 风格的「标题行」（金色加粗）。"""
+    return ('<p style="margin:12px 0 2px 0;color:%s;font-size:20px;'
+            'font-weight:700;">%s</p>' % (theme.FLOAT_GOLD, _esc(name)))
+
+
+def _course_html(c, sched, week_no=None):
+    """一节课的 HTML 列表项：• 加粗节次+时刻，灰色地点/周次，红色「本周不上」。"""
+    secs = "%d-%d节" % (c.sec_start, c.sec_end)
+    when = ""
+    if sched.sections:
+        a = sched.sections.get(str(c.sec_start))
+        b = sched.sections.get(str(c.sec_end))
+        if a and b:
+            when = " (%s-%s)" % (a, b)
+    weeks = " %d-%d周%s" % (c.week_start, c.week_end,
+                            _PARITY_LABEL.get(c.parity, ""))
+    room = " @%s" % c.room if c.room else ""
+    off = ('<span style="color:%s;">（本周不上）</span>' % theme.RED
+           if week_no and not c.active_on(week_no) else "")
+    return ('<p style="margin:3px 0;color:%s;">'
+            '<span style="color:%s;">•</span> <b>%s%s</b> %s'
+            '<span style="color:%s;">%s%s</span> %s</p>') % (
+        theme.FLOAT_TEXT, theme.FLOAT_GOLD,
+        _esc(secs), _esc(when), _esc(c.name),
+        theme.FLOAT_TEXT_DIM, _esc(room), _esc(weeks), off)
+
+
+def _schedule_html(which, sched, week_no):
+    """课程表三种视图的 HTML：today / week / next（Markdown 风格列表）。"""
+    if which == "today":
+        courses = sched.today(week_no)
+        if not courses:
+            return ('<p style="color:%s;">今天没有课，博士可以自由安排。</p>'
+                    % theme.FLOAT_TEXT)
+        return (_day_head("今天有 %d 节课：" % len(courses))
+                + "".join(_course_html(c, sched, week_no) for c in courses))
+    if which == "next":
+        nxt = sched.next_class()
+        if not nxt:
+            return ('<p style="color:%s;">本周没有剩下的课了，博士可以休息。</p>'
+                    % theme.FLOAT_TEXT)
+        c, _, _, start = nxt
+        mins = int((start - datetime.now()).total_seconds() // 60)
+        where = " @%s" % c.room if c.room else ""
+        return (_day_head("下一节课") + (
+            '<p style="margin:6px 0;color:%s;">%d-%d节 <b>%s</b>  '
+            '%s%s（%d 分钟后）</p>' % (
+                theme.FLOAT_TEXT, c.sec_start, c.sec_end, _esc(c.name),
+                _esc(start.strftime("%H:%M")), _esc(where), mins)))
+    # week —— 完整周课表，按星期分组
+    parts = []
+    for wd in range(1, 8):
+        courses = sched.courses_on(wd, None)
+        if not courses:
+            continue
+        parts.append(_day_head(WEEKDAY_NAMES[wd]))
+        parts.extend(_course_html(c, sched, week_no) for c in courses)
+    if sched.notes:
+        parts.append(_day_head("网课（无固定时间）"))
+        parts.extend('<p style="margin:3px 0;color:%s;">• %s</p>'
+                     % (theme.FLOAT_TEXT, _esc(n)) for n in sched.notes)
+    return "".join(parts)
 
 _QSS = """
 QWidget#PanelRoot { background:%s; color:%s; }
@@ -232,41 +304,18 @@ class InfoPanel(QtWidgets.QWidget):
             self.refresh_tasks()
 
     def show_schedule(self, which):
-        """展示课程表：'today' / 'week' / 'next'。"""
+        """展示课程表：'today' / 'week' / 'next'（富文本 Markdown 风格列表）。"""
         s = self.owner.schedule
         self.nav.setCurrentRow(0)
         self.stack.setCurrentIndex(0)
         if not s.courses:
-            self.sched_view.setPlainText(
-                "还没有导入课表。右键菜单 → 课程表 → 导入课表。")
+            self.sched_view.setHtml(
+                '<p style="color:%s;">还没有导入课表。'
+                '右键菜单 → 课程表 → 导入课表。</p>' % theme.FLOAT_TEXT)
             return
         week_no = s.week_no()
-        if which == "today":
-            courses = s.today(week_no)
-            if not courses:
-                text = "今天没有课，博士可以自由安排。"
-            else:
-                parts = []
-                for c in courses:
-                    line = c.display(s.sections)
-                    if week_no and not c.active_on(week_no):
-                        line += "（本周不上）"
-                    parts.append(line)
-                text = "今天有 %d 节课：\n\n%s" % (len(courses), "\n".join(parts))
-        elif which == "next":
-            nxt = s.next_class()
-            if not nxt:
-                text = "本周没有剩下的课了，博士可以休息。"
-            else:
-                c, _, _, start = nxt
-                mins = int((start - datetime.now()).total_seconds() // 60)
-                where = " @%s" % c.room if c.room else ""
-                text = "下一节：%d-%d节 %s  %s%s（%d 分钟后）" % (
-                    c.sec_start, c.sec_end, c.name, start.strftime("%H:%M"),
-                    where, mins)
-        else:
-            text = s.dump_text(week_no=week_no)
-        self.sched_view.setPlainText(text)
+        html = _schedule_html(which, s, week_no)
+        self.sched_view.setHtml(html)
         self.sched_view.moveCursor(QtGui.QTextCursor.Start)
 
     def refresh_tasks(self):
