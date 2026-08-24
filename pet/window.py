@@ -21,7 +21,7 @@ from .info_panel import InfoPanel, PAGE_OCR, PAGE_SCHEDULE, PAGE_TASKS
 from .ocr import OcrError, ocr_image, summarize_ai
 from .region_select import RegionSelect
 from .schedule import Schedule
-from .settings import Settings, characters_dirs
+from .settings import Settings, characters_dirs, config_dir
 from .tasks import Tasks
 from .tasks_ui import TaskDialog, TaskListDialog
 from .timers import CountdownBadge, DurationDialog, PomodoroDialog
@@ -808,6 +808,23 @@ class PetWindow(QtWidgets.QWidget):
                 hk.activated.connect(slot)
                 setattr(self, attr, hk)
         self._ocr_worker = None
+        # 诊断：把每个热键的注册结果写进 hotkeys.log（调试 Alt+Q 无反应用）。
+        try:
+            regs = []
+            for spec, attr, _s in (
+                    (self._hotkey_spec, "hotkey", None),
+                    (self._translate_hotkey_spec, "_translate_hotkey", None),
+                    (self._ocr_hotkey_spec, "_ocr_hotkey", None),
+                    (self._sel_hotkey_spec, "_sel_hotkey", None)):
+                h = getattr(self, attr, None)
+                regs.append("%s=%s" % (spec, bool(h) and h.active))
+            with open(os.path.join(config_dir(), "hotkeys.log"), "a",
+                      encoding="utf-8") as f:
+                f.write("[%s] %s\n" % (
+                    datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    ", ".join(regs)))
+        except Exception:
+            pass
 
     def _toggle_chat(self):
         """Hotkey action: pop the input if hidden, else dismiss it."""
@@ -856,7 +873,22 @@ class PetWindow(QtWidgets.QWidget):
 
         剪贴板会在取词后自动还原；翻译气泡显示在鼠标位置附近。取词是
         异步的（等目标程序把选中文字放进剪贴板），期间不阻塞界面。
+        任何异常都会记入 hotkeys.log，避免打包版静默失败。
         """
+        try:
+            self._do_select_translate()
+        except Exception:
+            import traceback
+            try:
+                with open(os.path.join(config_dir(), "hotkeys.log"), "a",
+                          encoding="utf-8") as f:
+                    f.write("[%s] 划词翻译异常:\n%s\n" % (
+                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        traceback.format_exc()))
+            except Exception:
+                pass
+
+    def _do_select_translate(self):
         self.input.hide()
         self.bubble.hide()
         clipboard = QtWidgets.QApplication.clipboard()
@@ -867,8 +899,13 @@ class PetWindow(QtWidgets.QWidget):
                             self._body_rect())
             return
 
-        def grab():
+        def grab(attempt=0):
             text = (clipboard.text() or "").strip()
+            # 慢剪贴板（Office/旧 PDF 阅读器）可能 250ms 内还没写入：
+            # 空结果再等一次，仍为空才提示用户。
+            if not text and attempt == 0:
+                QtCore.QTimer.singleShot(600, lambda: grab(1))
+                return
             try:
                 clipboard.setText(saved)      # 还原用户原来的剪贴板
             except Exception:
@@ -1588,7 +1625,11 @@ class PetWindow(QtWidgets.QWidget):
         hint = ("（%s）" % self._hotkey_spec.title()
                 if getattr(self, "hotkey", None) and self.hotkey.active else "")
         m.addAction("和%s聊天…" % self.char.display_name + hint, self.open_chat)
-        m.addAction("划词翻译（Alt+Q）", self._select_translate)
+        sel_hint = self._sel_hotkey_spec.title()
+        if not (getattr(self, "_sel_hotkey", None)
+                and self._sel_hotkey.active):
+            sel_hint += "（未注册）"
+        m.addAction("划词翻译（%s）" % sel_hint, self._select_translate)
         m.addAction("翻译剪贴板（Alt+T）", self._translate_clipboard)
         m.addAction("忘记对话", self._forget_chat)
         m.addAction("模型配置…", self._open_ai_settings)
