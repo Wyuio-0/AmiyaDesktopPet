@@ -256,9 +256,13 @@ def _find_pid_on_port(port):
         return None
     try:
         import subprocess
+        # 中文 Windows 的 netstat 输出是 GBK（表头是中文），text=True 按 utf-8
+        # 解码会抛 UnicodeDecodeError 导致整段解析静默失效——按字节取回再用
+        # errors="ignore" 解码（数据行是 ASCII，丢弃乱码表头不影响按列解析）。
         out = subprocess.run(
-            ["netstat", "-ano"], capture_output=True, text=True,
+            ["netstat", "-ano"], capture_output=True,
             creationflags=0x08000000).stdout
+        out = out.decode("utf-8", errors="ignore")
         for line in out.splitlines():
             parts = line.split()
             if len(parts) < 5 or parts[3] != "LISTENING":
@@ -351,11 +355,14 @@ def _stop_clone_service(timeout=5):
     _manual_start = False   # 停掉后回到「可自动停」状态，下次自动拉起照常超时
     # 1. Kill by PID — always works, even when we reused a process we didn't
     #    launch (in which case _clone_proc is None but _clone_pid is tracked).
+    #    /t 连子进程树一起杀：serve.py 会拉起模型子进程，只杀父进程会留下
+    #    残留 python（占用显存/端口）。
     if _clone_pid is not None:
         if os.name == "nt":
             try:
                 import subprocess
-                subprocess.run(["taskkill", "/f", "/pid", str(_clone_pid)],
+                subprocess.run(["taskkill", "/f", "/t", "/pid",
+                                str(_clone_pid)],
                                capture_output=True,
                                creationflags=0x08000000)
             except Exception:
@@ -379,10 +386,9 @@ def _stop_clone_service(timeout=5):
                     pass
     _clone_proc = None
     _clone_pid = None
-    # 3. Last resort: if something is still listening on the port, hunt it down
-    #    via netstat (catches stale processes from other sessions).
-    if clone_ready(timeout=1.0):
-        _kill_listeners_on_clone_port()
+    # 3. 兜底：端口上凡是 LISTENING 的一律清掉。不依赖 /ping 判断——
+    #    模型加载中（/ping 不响应）或子进程残留时照样能清干净。
+    _kill_listeners_on_clone_port()
 
 
 def _clone_port(default=9881):
@@ -412,9 +418,11 @@ def _kill_listeners_on_clone_port():
     try:
         import subprocess
         # netstat -> find LISTENING PIDs on :port, then taskkill each.
+        # 中文系统输出为 GBK，必须按字节解码（见 _find_pid_on_port）。
         out = subprocess.run(
-            ["netstat", "-ano"], capture_output=True, text=True,
+            ["netstat", "-ano"], capture_output=True,
             creationflags=0x08000000).stdout
+        out = out.decode("utf-8", errors="ignore")
         pids = set()
         for line in out.splitlines():
             # Columns: proto  local-addr  foreign-addr  state  pid
@@ -429,7 +437,7 @@ def _kill_listeners_on_clone_port():
             if parts[-1].isdigit() and parts[-1] != "0":
                 pids.add(parts[-1])
         for pid in pids:
-            subprocess.run(["taskkill", "/f", "/pid", pid],
+            subprocess.run(["taskkill", "/f", "/t", "/pid", pid],
                            capture_output=True, creationflags=0x08000000)
         # Give the OS a moment to release the socket (TIME_WAIT).
         import time as _t

@@ -1811,10 +1811,10 @@ class PetWindow(QtWidgets.QWidget):
                 if not w.wait(3000):
                     w.terminate()
                     w.wait(1000)
-        # Kill the voice-clone service subprocess — otherwise it keeps running
-        # and consuming memory after the pet window is closed.
-        if self._use_clone:
-            tts.stop_clone_service()
+        # 语音克隆服务必须随桌宠退出而退出：无论当前角色的 use_clone 是
+        # 什么（切换角色后可能变成 False，但服务可能是之前角色/手动启动的），
+        # 只要在跑就要停掉，否则残留 python 进程继续占显存。
+        tts.stop_clone_service()
         # Release the audio file the player holds open, then delete the temp
         # speech files so conversation audio isn't left behind in %TEMP%.
         self.voice.stop()
