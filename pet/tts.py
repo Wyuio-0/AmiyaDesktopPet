@@ -407,6 +407,10 @@ def _stop_clone_service(timeout=5):
     #    否则 10 分钟空闲自动停止后菜单还停留在「停止服务」。
     global _clone_state_cache
     _clone_state_cache = "stopped"
+    # 再补一次权威刷新：探针线程每 3s ping 一次，若它的旧 ping 结果在停服后
+    # 才返回，会把缓存覆盖回 running——这次刷新在杀进程之后执行，结果才是
+    # 权威的（服务已死 -> stopped），把竞态窗口关掉。
+    refresh_clone_state()
 
 
 def _clone_port(default=9881):
