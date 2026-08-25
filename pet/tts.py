@@ -403,6 +403,10 @@ def _stop_clone_service(timeout=5):
     # 3. 兜底：端口上凡是 LISTENING 的一律清掉。不依赖 /ping 判断——
     #    模型加载中（/ping 不响应）或子进程残留时照样能清干净。
     _kill_listeners_on_clone_port()
+    # 4. 状态缓存立即同步为 stopped——右键菜单直接读它，不等后台探针刷新，
+    #    否则 10 分钟空闲自动停止后菜单还停留在「停止服务」。
+    global _clone_state_cache
+    _clone_state_cache = "stopped"
 
 
 def _clone_port(default=9881):
