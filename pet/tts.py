@@ -119,6 +119,13 @@ _clone_last_used = 0.0       # timestamp of last TTS request that used the clone
 _manual_start = False        # True when the user started it from the menu; a
                               # manually started service must NOT be auto-stopped
                               # by the idle timeout (the model takes ~30s to load)
+_manual_auto_stop = False    # 设置里勾选后：手动启动的服务也参与 10 分钟空闲自动停止
+
+
+def set_manual_auto_stop(flag):
+    """是否允许手动启动的服务被空闲超时自动停止（默认否）。"""
+    global _manual_auto_stop
+    _manual_auto_stop = bool(flag)
 
 # Last-known clone service state, cached so menu code never blocks on a /ping.
 # Refreshed off the UI thread by the background probe (pet.window.CloneStateProbe)
@@ -215,10 +222,12 @@ def maybe_stop_idle_clone(idle_seconds: float = 600) -> bool:
 
     A service the user started manually from the context menu is never
     auto-stopped — they explicitly asked for it and reloading the model takes
-    ~30 s; only automatically-launched instances get an idle timeout.
+    ~30 s; only automatically-launched instances get an idle timeout.  When
+    set_manual_auto_stop(True) is on (settings → 语音), manual services also
+    join the idle timeout.
     """
     global _clone_last_used, _clone_proc
-    if _manual_start:
+    if _manual_start and not _manual_auto_stop:
         return False
     if _clone_last_used <= 0:
         return False

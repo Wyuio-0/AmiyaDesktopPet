@@ -6,6 +6,7 @@ import os
 import random
 import sys
 import traceback
+import webbrowser
 from datetime import date, datetime, timedelta
 
 import cv2
@@ -30,6 +31,7 @@ from .translate import TranslationPopup, TranslateWorker
 from .translate import _translate_via_ai, _translate_via_google
 from .voice import VoicePlayer
 from . import actions, knowledge, logging as petlog, memory, schedule, theme, translate, tts
+from . import updater
 
 # Typewriter reveal: show the streamed reply at a steady pace regardless of how
 # bursty the network delivery is. One "step" reveals TYPE_STEP chars every
@@ -68,6 +70,22 @@ class CloneStateProbe(QtCore.QThread):
 
     def run(self):
         tts.refresh_clone_state()
+
+
+class UpdateCheckThread(QtCore.QThread):
+    """后台查 GitHub 最新 Release；发现比当前版本新则发 result(dict)，否则 None。"""
+
+    result = QtCore.pyqtSignal(object)
+
+    def run(self):
+        info = updater.latest_release()
+        if info:
+            tag, html, installer = info
+            if updater.is_newer(tag):
+                self.result.emit({"tag": tag, "html": html,
+                                  "installer": installer})
+                return
+        self.result.emit(None)
 
 
 class OcrWorker(QtCore.QThread):
@@ -246,6 +264,13 @@ class PetWindow(QtWidgets.QWidget):
         self._tray_hint_shown = False
         # AI 敏感操作确认：worker 线程的信号在 GUI 线程弹确认框。
         self.confirm_dialog_requested.connect(self._run_confirm_dialog)
+        # 语音克隆：加载完成提醒的过渡状态；手动启动是否参与空闲自动停止。
+        self._clone_was_starting = False
+        self._clone_notified = False
+        tts.set_manual_auto_stop(self.prefs.get("clone_manual_autostop", False))
+        # 自动更新：启动数秒后静默检查（可在设置里关闭）。
+        if self.prefs.get("check_updates", True):
+            QtCore.QTimer.singleShot(4000, self._check_updates)
         # Typewriter reveal state (see TYPE_* constants).
         self._type_target = ""      # full text received so far (may still grow)
         self._type_shown = 0        # chars currently revealed in the bubble
@@ -1190,6 +1215,8 @@ class PetWindow(QtWidgets.QWidget):
         self._use_clone = bool(self._tts_cfg.get("use_clone", True))
         self._clone_character = self._tts_cfg.get("clone_character",
             os.path.basename(os.path.normpath(self.char.dir)))
+        tts.set_manual_auto_stop(
+            self.prefs.get("clone_manual_autostop", False))
         # Character scan cache and clone-state probe follow the new character
         # (use_clone may differ per character).
         self._chars_cache = None
@@ -1904,7 +1931,54 @@ class PetWindow(QtWidgets.QWidget):
     def _clone_probe_done(self, probe):
         if self._clone_probe is probe:
             self._clone_probe = None
+            state = tts.clone_state()
             self._update_tray_tooltip()   # 托盘提示同步克隆状态
+            # 加载完成提醒：starting -> running 时气泡提示一次
+            if state == "running":
+                if self._clone_was_starting and not self._clone_notified:
+                    self._clone_notified = True
+                    self._note("语音克隆模型已就绪，博士可以用我的声音了。")
+                self._clone_was_starting = False
+            elif state == "starting":
+                self._clone_was_starting = True
+                self._clone_notified = False
+            else:   # stopped
+                self._clone_was_starting = False
+                self._clone_notified = False
+
+    # -- 自动更新检查（启动静默查 GitHub Releases）------------------------
+
+    def _check_updates(self, silent=True):
+        if self._quitting:
+            return
+        t = getattr(self, "_update_thread", None)
+        if t is not None and t.isRunning():
+            return
+        t = UpdateCheckThread(self)
+        t.result.connect(lambda info: self._update_result(info, silent))
+        self._update_thread = t
+        t.start()
+
+    def _update_result(self, info, silent):
+        self._update_thread = None
+        if not info:
+            if not silent:
+                self._note("已经是最新版本了，博士。")
+            return
+        tag = info["tag"]
+        html = info["html"] or "https://github.com/%s/releases" % updater.REPO
+        msg = "发现新版本 %s，点击前往下载。" % tag
+        if getattr(self, "_tray", None):
+            try:
+                self._tray.messageClicked.disconnect()
+            except Exception:
+                pass
+            self._tray.messageClicked.connect(
+                lambda: webbrowser.open(html))
+            self._tray.showMessage("阿米娅桌面宠物 · 发现新版本", msg,
+                                   QtWidgets.QSystemTrayIcon.Information, 8000)
+        else:
+            self._note(msg)
 
     def _start_clone(self):
         """Manually start the voice-clone service (model load ~30s).
@@ -1918,6 +1992,8 @@ class PetWindow(QtWidgets.QWidget):
             manual=True)
         if ok and not was_running:
             tts.set_clone_state("starting")   # label updates immediately
+            self._clone_was_starting = True
+            self._clone_notified = False
         self._schedule_clone_probe()          # confirm 'starting' -> 'running'
         if ok:
             self._note("正在加载语音克隆模型，大约 30 秒后博士就能听到我的声音了。")
@@ -1928,6 +2004,8 @@ class PetWindow(QtWidgets.QWidget):
         """Manually stop the voice-clone service and free GPU memory."""
         tts.stop_clone_service()
         tts.set_clone_state("stopped")        # label updates immediately
+        self._clone_was_starting = False
+        self._clone_notified = False
         self._schedule_clone_probe()          # confirm the port is really gone
         self._note("语音克隆服务已停止，显存已释放。")
 

@@ -12,7 +12,7 @@ _apply_hotkey_overrides / _refresh_exam_badge），保证与右键菜单行为�
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from . import logging as petlog
-from . import theme, tts
+from . import theme, tts, updater
 
 # DIALOG_QSS 未覆盖的控件：页签、滑杆、组合键输入框——补上统一的 Terminal 风格。
 _EXTRA_QSS = """
@@ -104,6 +104,8 @@ class SettingsDialog(QtWidgets.QDialog):
         vl.setSpacing(10)
         self.cb_tts = QtWidgets.QCheckBox("朗读回答（语音合成）", v)
         self.cb_mute = QtWidgets.QCheckBox("静音", v)
+        self.cb_clone_autostop = QtWidgets.QCheckBox(
+            "按钮启动的语音克隆 10 分钟未使用自动停止（默认关闭）", v)
         volrow = QtWidgets.QHBoxLayout()
         volrow.addWidget(QtWidgets.QLabel("音量", v))
         self.vol_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal, v)
@@ -114,6 +116,7 @@ class SettingsDialog(QtWidgets.QDialog):
         volrow.addWidget(self.vol_label)
         vl.addWidget(self.cb_tts)
         vl.addWidget(self.cb_mute)
+        vl.addWidget(self.cb_clone_autostop)
         vl.addLayout(volrow)
         vl.addStretch(1)
         self.tabs.addTab(v, "语音")
@@ -144,8 +147,19 @@ class SettingsDialog(QtWidgets.QDialog):
         for c in self.owner._available_characters():
             self.cb_char.addItem(c.display_name, c.key)
         self.cb_exam = QtWidgets.QCheckBox("显示考试倒计时常驻徽章", g)
+        self.cb_check_updates = QtWidgets.QCheckBox("启动时检查更新", g)
         gl.addRow("默认角色", self.cb_char)
         gl.addRow("", self.cb_exam)
+        gl.addRow("", self.cb_check_updates)
+        self.ver_label = QtWidgets.QLabel(
+            "当前版本 v%s" % updater.APP_VERSION, g)
+        self.btn_check_updates = QtWidgets.QPushButton("检查更新…", g)
+        self.btn_check_updates.clicked.connect(self._check_now)
+        hrow = QtWidgets.QHBoxLayout()
+        hrow.addWidget(self.ver_label)
+        hrow.addStretch(1)
+        hrow.addWidget(self.btn_check_updates)
+        gl.addRow("版本", hrow)
         note2 = QtWidgets.QLabel("默认角色在下一次启动时生效。", g)
         note2.setStyleSheet("color:%s;font-size:13px;" % theme.FLOAT_TEXT_DIM)
         gl.addRow("", note2)
@@ -167,6 +181,8 @@ class SettingsDialog(QtWidgets.QDialog):
         self.cb_tts.setChecked(o._tts_on)
         self.cb_tts.setEnabled(o._tts_supported and tts.available())
         self.cb_mute.setChecked(not o.voice.enabled)
+        self.cb_clone_autostop.setChecked(
+            o.prefs.get("clone_manual_autostop", False))
         vol = int(round(o.voice.volume * 100))
         self.vol_slider.setValue(vol)
         self._on_volume(vol)
@@ -181,6 +197,11 @@ class SettingsDialog(QtWidgets.QDialog):
         if idx >= 0:
             self.cb_char.setCurrentIndex(idx)
         self.cb_exam.setChecked(o.prefs.get("exam_badge", True))
+        self.cb_check_updates.setChecked(o.prefs.get("check_updates", True))
+
+    def _check_now(self):
+        """立即检查更新（结果以气泡/托盘提示显示）。"""
+        self.owner._check_updates(silent=False)
 
     def _on_volume(self, value):
         self.vol_label.setText("%d%%" % value)
@@ -203,6 +224,9 @@ class SettingsDialog(QtWidgets.QDialog):
             o._set_tts(self.cb_tts.isChecked())
             o._toggle_mute(self.cb_mute.isChecked())
             o._on_volume_slider(self.vol_slider.value())
+            o.prefs.set("clone_manual_autostop",
+                        self.cb_clone_autostop.isChecked())
+            tts.set_manual_auto_stop(self.cb_clone_autostop.isChecked())
             # 热键只保存到 prefs；真正重注册由窗口在对话框关闭后执行
             # （见 PetWindow._open_settings），避免在模态事件循环里碰
             # RegisterHotKey/原生事件过滤器导致进程崩溃。
@@ -211,6 +235,7 @@ class SettingsDialog(QtWidgets.QDialog):
             if key:
                 o.prefs.set("character", key)
             o.prefs.set("exam_badge", self.cb_exam.isChecked())
+            o.prefs.set("check_updates", self.cb_check_updates.isChecked())
             o._refresh_exam_badge()
         except Exception:
             import traceback
