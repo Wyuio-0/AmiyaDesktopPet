@@ -125,9 +125,7 @@ def build_config(key, display_name, actions):
     return {
         "name": key,
         "display_name": display_name or key,
-        "description": "%s from Arknights" % (display_name or key),
         "scale": 1.0,
-        "transparent_color": "#FF00FF",
         "actions": action_cfg,
         "interactions": interactions,
         "rest": {"idle_to_sit": [300, 600], "sit_to_sleep": [3600, 7200]},

@@ -1,9 +1,7 @@
 {
   "name": "予愿安洁莉娜",
   "display_name": "予愿安洁莉娜",
-  "description": "予愿安洁莉娜 from Arknights",
   "scale": 0.765,
-  "transparent_color": "#FF00FF",
   "actions": {
     "start": {
       "folder": "start",
@@ -134,7 +132,6 @@
     "tts": {
       "enabled": true,
       "use_clone": true,
-      "clone_autostart": true,
       "clone_dir": "voiceclone",
       "voice": "zh-CN-XiaoyiNeural",
       "rate": "+0%",

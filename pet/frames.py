@@ -1,10 +1,9 @@
 """Frame decoding + chroma-key: turn an opaque webm frame into BGRA.
 
-The webm clips render the character on a solid black background (despite the
-config naming a magenta key colour).  Because the character contains genuinely
-dark pixels (outlines, dark clothing), a plain threshold would punch holes in
-her.  The old approach flood-filled dark pixels from the four corners, which
-left two classes of artifacts:
+The webm clips render the character on a solid black background.  Because the
+character contains genuinely dark pixels (outlines, dark clothing), a plain
+threshold would punch holes in her.  The old approach flood-filled dark pixels
+from the four corners, which left two classes of artifacts:
 
 * **Enclosed background pockets** — gaps between moving body parts (arm vs
   waist, skirt vs legs, hair vs head) that are not connected to the border in

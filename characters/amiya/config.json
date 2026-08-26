@@ -1,9 +1,7 @@
 {
   "name": "Amiya",
   "display_name": "阿米娅",
-  "description": "Amiya from Arknights",
   "scale": 0.765,
-  "transparent_color": "#FF00FF",
   "actions": {
     "start": {
       "folder": "start",
@@ -114,7 +112,6 @@
     "tts": {
       "enabled": true,
       "use_clone": true,
-      "clone_autostart": true,
       "clone_dir": "voiceclone",
       "voice": "zh-CN-XiaoyiNeural",
       "rate": "-8%",

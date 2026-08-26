@@ -129,8 +129,6 @@ QPushButton:disabled { color:%s; }
     theme.FLOAT_TEXT_DIM,
 )
 
-_SCHED_LABELS = {"today": "今天课程", "week": "本周课表", "next": "下一节课"}
-
 
 class InfoPanel(QtWidgets.QWidget):
     """课程表 / 待办与考试 / OCR 结果的集中面板（置顶、可缩放、可拖动）。"""
