@@ -13,6 +13,7 @@ import sys
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from pet import Character, PetWindow
+from pet import logging as petlog
 from pet.settings import Settings, characters_dirs
 
 
@@ -46,6 +47,10 @@ def find_character(name=None):
 
 
 def main():
+    # 先装全局异常钩子：打包版 console=False，所有未捕获异常写入 pet.log
+    # （%APPDATA%\AmiyaPet\pet.log），否则只能盲猜。
+    petlog.init_logging()
+
     # High-DPI scaling is enabled by default in PyQt5 5.15+; the explicit
     # attribute is deprecated and prints a runtime warning.
     app = QtWidgets.QApplication(sys.argv)
@@ -63,6 +68,7 @@ def main():
             raise
         char_path = find_character(None)
     character = Character(char_path)
+    petlog.log("角色: %s (%s)" % (character.key, character.display_name))
     window = PetWindow(character)
     window.show()
 

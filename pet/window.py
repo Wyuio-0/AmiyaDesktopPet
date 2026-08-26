@@ -28,7 +28,7 @@ from .timers import CountdownBadge, DurationDialog, PomodoroDialog
 from .translate import TranslationPopup, TranslateWorker
 from .translate import _translate_via_ai, _translate_via_google
 from .voice import VoicePlayer
-from . import actions, knowledge, memory, schedule, theme, translate, tts
+from . import actions, knowledge, logging as petlog, memory, schedule, theme, translate, tts
 
 # Typewriter reveal: show the streamed reply at a steady pace regardless of how
 # bursty the network delivery is. One "step" reveals TYPE_STEP chars every
@@ -800,6 +800,15 @@ class PetWindow(QtWidgets.QWidget):
                 hk.activated.connect(slot)
                 setattr(self, attr, hk)
         self._ocr_worker = None
+        # 热键注册结果写入 pet.log（排障：热键没反应先看这里，注册失败多为
+        # 组合键被其他程序占用）。
+        petlog.log("hotkeys: %s" % ", ".join(
+            "%s=%s" % (spec, getattr(self, attr, None) is not None
+                       and getattr(self, attr).active)
+            for spec, attr, _s in (
+                (self._hotkey_spec, "hotkey", None),
+                (self._translate_hotkey_spec, "_translate_hotkey", None),
+                (self._ocr_hotkey_spec, "_ocr_hotkey", None))))
 
     def _toggle_chat(self):
         """Hotkey action: pop the input if hidden, else dismiss it."""
@@ -1889,6 +1898,7 @@ class PetWindow(QtWidgets.QWidget):
 
     def _quit(self):
         self._quitting = True   # 后续 closeEvent 直接放行，不再隐藏到托盘
+        petlog.log("exit")
         if getattr(self, "hotkey", None):
             self.hotkey.unregister()
         if getattr(self, "_translate_hotkey", None):
