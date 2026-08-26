@@ -818,16 +818,21 @@ class PetWindow(QtWidgets.QWidget):
     def _setup_hotkey(self):
         """Register system-wide shortcuts (Win only).
 
-        Chat / translate / OCR hotkeys can be overridden per-character via
-        config.json "hotkey" / "hotkey_translate" / "hotkey_ocr". Duplicate
+        Chat / translate / OCR hotkeys come from per-character config.json
+        "hotkey" / "hotkey_translate" / "hotkey_ocr", overridable by the
+        settings dialog via prefs["hotkeys_<角色>"]（保存到用户数据目录，
+        打包版内置角色目录只读时也能改键）。Duplicate
         specs are registered only once (chat wins), so a config that sets
         "hotkey": "alt+t" can't silently kill the translate shortcut — and
         the chat hotkey itself can't be lost to a fixed default collision.
         """
-        self._hotkey_spec = self.char.cfg.get("hotkey", "alt+a")
-        self._translate_hotkey_spec = self.char.cfg.get(
+        _ov = self.prefs.get("hotkeys_" + self.char.key, {}) or {}
+        self._hotkey_spec = _ov.get("chat") or self.char.cfg.get(
+            "hotkey", "alt+a")
+        self._translate_hotkey_spec = _ov.get("translate") or self.char.cfg.get(
             "hotkey_translate", "alt+t")
-        self._ocr_hotkey_spec = self.char.cfg.get("hotkey_ocr", "alt+s")
+        self._ocr_hotkey_spec = _ov.get("ocr") or self.char.cfg.get(
+            "hotkey_ocr", "alt+s")
         self.hotkey = None
         self._translate_hotkey = None
         self._ocr_hotkey = None
@@ -857,6 +862,22 @@ class PetWindow(QtWidgets.QWidget):
                 (self._hotkey_spec, "hotkey", None),
                 (self._translate_hotkey_spec, "_translate_hotkey", None),
                 (self._ocr_hotkey_spec, "_ocr_hotkey", None))))
+
+    def _unregister_hotkeys(self):
+        """反注册全部全局热键（切角色 / 退出 / 设置改键前调用）。"""
+        for attr in ("hotkey", "_translate_hotkey", "_ocr_hotkey"):
+            h = getattr(self, attr, None)
+            if h is not None:
+                try:
+                    h.unregister()
+                except Exception:
+                    pass
+                setattr(self, attr, None)
+
+    def _apply_hotkey_overrides(self):
+        """设置对话框保存热键后调用：反注册旧热键并重新注册，改键即时生效。"""
+        self._unregister_hotkeys()
+        self._setup_hotkey()
 
     def _toggle_chat(self):
         """Hotkey action: pop the input if hidden, else dismiss it."""
@@ -1115,12 +1136,7 @@ class PetWindow(QtWidgets.QWidget):
             self._cap.release()
             self._cap = None
         self.voice.stop()
-        if getattr(self, "hotkey", None):
-            self.hotkey.unregister()
-        if getattr(self, "_translate_hotkey", None):
-            self._translate_hotkey.unregister()
-        if getattr(self, "_ocr_hotkey", None):
-            self._ocr_hotkey.unregister()
+        self._unregister_hotkeys()
         # Stop in-flight workers so their callbacks can't touch the new
         # character's state (old brain / old voice player). terminate() is the
         # last-resort fallback when a thread is stuck in blocking I/O.
@@ -1688,6 +1704,7 @@ class PetWindow(QtWidgets.QWidget):
         m.addAction("忘记对话", self._forget_chat)
         m.addAction("模型配置…", self._open_ai_settings)
         m.addAction("应用白名单…", self._open_app_whitelist)
+        m.addAction("设置…", self._open_settings)
         if not self.brain.online:
             status = "AI 离线（用内置台词）"
         elif self.brain.cfg.get("allow_actions", True):
@@ -1726,6 +1743,11 @@ class PetWindow(QtWidgets.QWidget):
     def _open_app_whitelist(self):
         """打开应用白名单管理对话框（添加/删除阿米娅可启动的程序）。"""
         AppWhitelistDialog(self).exec_()
+
+    def _open_settings(self):
+        """打开统一设置对话框（语音 / 热键 / 通用）。"""
+        from .settings_ui import SettingsDialog
+        SettingsDialog(self).exec_()
 
     def _apply_ai_settings(self, cfg):
         old_history = self.brain.history
@@ -1947,12 +1969,7 @@ class PetWindow(QtWidgets.QWidget):
     def _quit(self):
         self._quitting = True   # 后续 closeEvent 直接放行，不再隐藏到托盘
         petlog.log("exit")
-        if getattr(self, "hotkey", None):
-            self.hotkey.unregister()
-        if getattr(self, "_translate_hotkey", None):
-            self._translate_hotkey.unregister()
-        if getattr(self, "_ocr_hotkey", None):
-            self._ocr_hotkey.unregister()
+        self._unregister_hotkeys()
         self.voice.stop()
         # Stop the clone-state probe (short-lived /ping thread) so it never
         # outlives the window; it is at most one /ping timeout long.
