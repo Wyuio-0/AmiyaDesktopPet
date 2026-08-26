@@ -113,6 +113,8 @@ class PetWindow(QtWidgets.QWidget):
     # Emitted from the AI worker thread when a reminder is scheduled; the queued
     # connection marshals it onto the UI thread where QTimer is safe to use.
     reminder_requested = QtCore.pyqtSignal(int, str)
+    # AI 敏感操作确认：worker 线程通过它把"弹确认框"的请求投递到 GUI 线程。
+    confirm_dialog_requested = QtCore.pyqtSignal(object)
 
     def __init__(self, character):
         super().__init__()
@@ -241,6 +243,8 @@ class PetWindow(QtWidgets.QWidget):
         # 托盘模式：关闭窗口默认隐藏到托盘而不是退出；真退出由 _quit 执行。
         self._quitting = False
         self._tray_hint_shown = False
+        # AI 敏感操作确认：worker 线程的信号在 GUI 线程弹确认框。
+        self.confirm_dialog_requested.connect(self._run_confirm_dialog)
         # Typewriter reveal state (see TYPE_* constants).
         self._type_target = ""      # full text received so far (may still grow)
         self._type_shown = 0        # chars currently revealed in the bubble
@@ -474,7 +478,51 @@ class PetWindow(QtWidgets.QWidget):
         """
         actions.set_schedule_provider(lambda: self.schedule)
         actions.set_tasks_provider(lambda: self.tasks)
+        actions.set_confirm_provider(self._confirm_action)
         self.brain.knowledge = knowledge.KnowledgeBase()
+
+    # -- AI 敏感操作确认（截图 / 剪贴板读取 / 键盘打字）------------------
+
+    def _confirm_action(self, name):
+        """AI 敏感操作确认入口（worker 线程调用，阻塞等待 GUI 结果）。
+
+        已「总是允许」的工具直接放行；否则把弹框请求投递到 GUI 线程，
+        用户选允许/拒绝，勾选「不再询问」则持久化到 prefs（perm_<tool>）。
+        30 秒无响应（应用正在退出等极端情况）兜底放行，避免对话卡死。
+        """
+        key = "perm_" + name
+        if self.prefs.get(key, "") == "allow":
+            return True
+        holder = {}
+
+        def ask():
+            desc = actions._SENSITIVE_DESC.get(name, "")
+            box = QtWidgets.QMessageBox(self)
+            box.setIcon(QtWidgets.QMessageBox.Warning)
+            box.setWindowTitle("阿米娅请求确认")
+            box.setText("博士，阿米娅想执行「%s」。\n%s" % (name, desc))
+            cb = QtWidgets.QCheckBox("不再询问，总是允许此类操作", box)
+            box.setCheckBox(cb)
+            allow_btn = box.addButton("允许", QtWidgets.QMessageBox.AcceptRole)
+            deny_btn = box.addButton("拒绝", QtWidgets.QMessageBox.RejectRole)
+            box.setDefaultButton(deny_btn)
+            box.exec_()
+            ok = box.clickedButton() is allow_btn
+            if ok and cb.isChecked():
+                self.prefs.set(key, "allow")
+                petlog.log("confirm: %s -> 总是允许" % name)
+            holder["ok"] = ok
+
+        loop = QtCore.QEventLoop()
+        QtCore.QTimer.singleShot(
+            30000, lambda: loop.quit() if "ok" not in holder else None)
+        self.confirm_dialog_requested.emit(lambda: (ask(), loop.quit()))
+        loop.exec_()
+        return holder.get("ok", True)
+
+    def _run_confirm_dialog(self, fn):
+        """GUI 线程执行确认框（QueuedConnection 投递过来的回调）。"""
+        fn()
 
     def _tasks_tick(self):
         """到期前提醒一次；顺带清理已结束任务的提醒记录。"""

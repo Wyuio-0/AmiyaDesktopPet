@@ -183,3 +183,58 @@ class TestComputerControl:
     def test_window_control_list(self):
         out = actions.window_control("list")
         assert isinstance(out, str) and "窗口" in out
+
+
+class TestSensitiveConfirm:
+    def test_no_provider_allows(self):
+        """未注入确认回调（测试/无界面）时敏感操作保持旧行为：直接放行。"""
+        actions.set_confirm_provider(None)
+        out = actions.run_action("screenshot", {})
+        assert isinstance(out, str) and "拒绝" not in out
+
+    def test_provider_denies(self):
+        calls = []
+        actions.set_confirm_provider(lambda name: calls.append(name) or False)
+        try:
+            out = actions.run_action("screenshot", {})
+            assert "拒绝" in out and calls == ["screenshot"]
+        finally:
+            actions.set_confirm_provider(None)
+
+    def test_provider_allows_screenshot(self):
+        calls = []
+        actions.set_confirm_provider(lambda name: calls.append(name) or True)
+        try:
+            out = actions.run_action("screenshot", {})
+            assert calls == ["screenshot"] and "拒绝" not in out
+        finally:
+            actions.set_confirm_provider(None)
+
+    def test_clipboard_get_needs_confirm(self):
+        calls = []
+        actions.set_confirm_provider(lambda name: calls.append(name) or True)
+        try:
+            actions.run_action("clipboard", {"action": "get"})
+            assert calls == ["clipboard"]
+        finally:
+            actions.set_confirm_provider(None)
+
+    def test_clipboard_set_not_sensitive(self):
+        """剪贴板「写入」不敏感：即使确认回调拒绝也不应被拦截。"""
+        calls = []
+        actions.set_confirm_provider(lambda name: calls.append(name) or False)
+        try:
+            actions.run_action("clipboard", {"action": "set", "text": "x"})
+            assert calls == []
+        finally:
+            actions.set_confirm_provider(None)
+
+    def test_non_sensitive_never_confirm(self):
+        calls = []
+        actions.set_confirm_provider(lambda name: calls.append(name) or False)
+        try:
+            actions.run_action("get_datetime", {})
+            actions.run_action("open_app", {"name": "记事本"})
+            assert calls == []
+        finally:
+            actions.set_confirm_provider(None)

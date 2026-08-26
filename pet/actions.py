@@ -745,6 +745,36 @@ _HANDLERS = {
     "clipboard": clipboard, "window_control": window_control,
 }
 
+# 敏感操作：执行前需用户确认（内容可能离开本机或被注入到前台窗口）。
+# description 给确认对话框使用，说明风险点。
+_SENSITIVE_DESC = {
+    "screenshot": "截图会捕获整个屏幕，可能包含隐私内容；"
+                  "后续的识别/总结还会把图片发送给 AI 服务。",
+    "clipboard": "读取剪贴板会把其中的文字内容发送给 AI 服务。",
+    "type_text": "会在当前聚焦的窗口里模拟键盘输入文字。",
+}
+
+_confirm_provider = None
+
+
+def set_confirm_provider(fn):
+    """注册确认回调 fn(tool_name) -> bool（True=允许执行）。
+
+    由 UI 层注入：在 GUI 线程弹确认框并持久化「不再询问」的选择。
+    未注入时（测试/无界面）敏感操作直接放行，保持旧行为。
+    """
+    global _confirm_provider
+    _confirm_provider = fn
+
+
+def _needs_confirm(name, args):
+    """该工具调用是否属于敏感操作（需要先经用户确认）。"""
+    if name in ("screenshot", "type_text"):
+        return True
+    if name == "clipboard":
+        return (args or {}).get("action") == "get"
+    return False
+
 
 def run_action(name, args):
     """Dispatch a tool call. Returns a short result string.
@@ -756,6 +786,10 @@ def run_action(name, args):
     fn = _HANDLERS.get(name)
     if not fn:
         return f"我还不会「{name}」这个操作。"
+    # 敏感操作确认（截图/剪贴板读取/键盘打字）：确认回调由 UI 注入。
+    if _needs_confirm(name, args) and _confirm_provider is not None:
+        if not _confirm_provider(name):
+            return f"已拒绝执行「{name}」——博士确认拦截，未执行。"
     try:
         return fn(**(args or {}))
     except TypeError:
