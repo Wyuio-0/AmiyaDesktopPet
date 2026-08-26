@@ -8,7 +8,7 @@
 
 - **动画播放** — WebM 透明抠图，支持 idle / click / drag / greet / move / sit / sleep 多动作
 - **AI 对话** — 接入大模型（DeepSeek / OpenAI / 通义千问等），阿米娅按人设陪你聊天，还能查课表、管理作业和考试
-- **知识库** — 把讲义 .txt/.md 放进知识库目录，对话时阿米娅基于课件答疑
+- **知识库** — 把讲义 .txt/.md 放进知识库目录，对话时阿米娅基于课件答疑（n-gram TF-IDF 检索，零依赖；源码运行可装 sentence-transformers 升级为本地语义检索，`python tools/setup_knowledge_embeddings.py`）
 - **语音合成** — 支持语音克隆（GPT-SoVITS）和 edge-tts，让宠物"开口说话"；克隆服务手动拉起，平时不占显存
 - **快速翻译** — `Alt+T` 翻译剪贴板文字，AI + Google 双后端自动降级
 - **课程表** — 导入强智教务等高校课表，上课前语音提醒、查今天/下一节课/本周课表

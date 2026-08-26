@@ -36,6 +36,10 @@
 - **自动更新**：启动数秒后静默检查 GitHub Releases，发现新版本托盘提示、
   点击直达下载页；设置里可关闭或点「检查更新…」立即查（当前版本 v1.4.0，
   发版时与 tag 同步）
+- **RAG 升级**：讲义检索由单字词频升级为 **n-gram TF-IDF + 余弦排序**（零依赖，
+  更准）；可选**本地语义检索**——`tools/setup_knowledge_embeddings.py` 一键安装
+  sentence-transformers 后源码运行自动启用多语言 embedding（打包版不内置 torch，
+  自动回退词频）；设置 → 通用可开关
 
 ### 修复
 

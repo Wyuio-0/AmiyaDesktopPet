@@ -55,6 +55,35 @@ class TestHelpers:
         toks = _tokenize("Binary tree 二叉树")
         assert "binary" in toks and "tree" in toks and "二" in toks
 
+    def test_tokenize_bigrams(self):
+        toks = _tokenize("傅里叶变换")
+        assert "傅里" in toks and "里叶" in toks and "变换" in toks
+
     def test_segment_splits_paragraphs(self):
         chunks = _segment("第一段。\n\n第二段。")
         assert len(chunks) == 2
+
+
+class TestTfidfRetrieval:
+    def test_bigram_beats_unrelated(self, tmp_path):
+        """n-gram TF-IDF：主题相关的片段应排在最前。"""
+        _write(tmp_path, "a.txt",
+               "傅里叶变换把时域信号变换到频域分析。\n\n"
+               "快速傅里叶变换 FFT 是数字信号处理的基石。\n\n"
+               "今天天气很好适合去操场跑步。")
+        kb = KnowledgeBase(folder=str(tmp_path), use_embed=False)
+        hits = kb.retrieve("FFT 快速傅里叶", top_k=1)
+        assert hits and "FFT" in hits[0]["text"]
+
+    def test_query_terms_absent_return_empty(self, tmp_path):
+        _write(tmp_path, "a.md", "线性代数：矩阵乘法。")
+        kb = KnowledgeBase(folder=str(tmp_path), use_embed=False)
+        assert kb.retrieve("量子力学纠缠") == []
+
+    def test_embed_unavailable_falls_back(self, tmp_path):
+        """没有 sentence-transformers 时 use_embed=True 也正常走词频。"""
+        _write(tmp_path, "n.txt", "操作系统：进程调度与死锁。")
+        kb = KnowledgeBase(folder=str(tmp_path), use_embed=True)
+        assert kb._emb_matrix is None          # 未安装 -> 无向量矩阵
+        hits = kb.retrieve("进程调度", top_k=1)
+        assert hits and "调度" in hits[0]["text"]

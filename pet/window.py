@@ -505,7 +505,13 @@ class PetWindow(QtWidgets.QWidget):
         actions.set_schedule_provider(lambda: self.schedule)
         actions.set_tasks_provider(lambda: self.tasks)
         actions.set_confirm_provider(self._confirm_action)
-        self.brain.knowledge = knowledge.KnowledgeBase()
+        self.brain.knowledge = knowledge.KnowledgeBase(
+            use_embed=self.prefs.get("knowledge_embed", True))
+
+    def _apply_knowledge_prefs(self):
+        """设置里改讲义检索后端后重建知识库（重新加载 + 编码）。"""
+        self.brain.knowledge = knowledge.KnowledgeBase(
+            use_embed=self.prefs.get("knowledge_embed", True))
 
     # -- AI 敏感操作确认（截图 / 剪贴板读取 / 键盘打字）------------------
 

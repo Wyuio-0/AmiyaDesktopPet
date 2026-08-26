@@ -148,9 +148,12 @@ class SettingsDialog(QtWidgets.QDialog):
             self.cb_char.addItem(c.display_name, c.key)
         self.cb_exam = QtWidgets.QCheckBox("显示考试倒计时常驻徽章", g)
         self.cb_check_updates = QtWidgets.QCheckBox("启动时检查更新", g)
+        self.cb_knowledge_embed = QtWidgets.QCheckBox(
+            "讲义检索：使用本地语义模型（需安装，未安装自动回退词频）", g)
         gl.addRow("默认角色", self.cb_char)
         gl.addRow("", self.cb_exam)
         gl.addRow("", self.cb_check_updates)
+        gl.addRow("", self.cb_knowledge_embed)
         self.ver_label = QtWidgets.QLabel(
             "当前版本 v%s" % updater.APP_VERSION, g)
         self.btn_check_updates = QtWidgets.QPushButton("检查更新…", g)
@@ -198,6 +201,8 @@ class SettingsDialog(QtWidgets.QDialog):
             self.cb_char.setCurrentIndex(idx)
         self.cb_exam.setChecked(o.prefs.get("exam_badge", True))
         self.cb_check_updates.setChecked(o.prefs.get("check_updates", True))
+        self.cb_knowledge_embed.setChecked(
+            o.prefs.get("knowledge_embed", True))
 
     def _check_now(self):
         """立即检查更新（结果以气泡/托盘提示显示）。"""
@@ -236,6 +241,8 @@ class SettingsDialog(QtWidgets.QDialog):
                 o.prefs.set("character", key)
             o.prefs.set("exam_badge", self.cb_exam.isChecked())
             o.prefs.set("check_updates", self.cb_check_updates.isChecked())
+            o.prefs.set("knowledge_embed", self.cb_knowledge_embed.isChecked())
+            o._apply_knowledge_prefs()
             o._refresh_exam_badge()
         except Exception:
             import traceback
