@@ -11,7 +11,31 @@ _apply_hotkey_overrides / _refresh_exam_badge），保证与右键菜单行为�
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
+from . import logging as petlog
 from . import theme, tts
+
+# DIALOG_QSS 未覆盖的控件：页签、滑杆、组合键输入框——补上统一的 Terminal 风格。
+_EXTRA_QSS = """
+QTabWidget::pane { border: 1px solid %s; border-radius: 4px; background: %s; }
+QTabBar::tab { background: transparent; color: %s; padding: 8px 18px;
+               font-size: 18px; border-bottom: 2px solid transparent; }
+QTabBar::tab:selected { color: %s; border-bottom: 2px solid %s; }
+QTabBar::tab:hover { color: %s; }
+QSlider::groove:horizontal { height: 4px; background: %s; border-radius: 2px; }
+QSlider::handle:horizontal { width: 14px; margin: -5px 0; background: %s;
+                             border-radius: 7px; }
+QKeySequenceEdit { background: %s; color: %s; border: 1px solid %s;
+                   border-radius: 4px; padding: 6px 8px;
+                   selection-background-color: %s; font-family: %s; }
+QKeySequenceEdit:focus { border: 1px solid %s; background: %s; }
+""" % (
+    theme.FLOAT_GRID, theme.DLG_BG,
+    theme.FLOAT_TEXT_DIM, theme.FLOAT_ACCENT, theme.FLOAT_GOLD, theme.FLOAT_TEXT,
+    theme.FLOAT_GRID, theme.FLOAT_GOLD,
+    theme.DLG_FIELD, theme.FLOAT_TEXT, theme.FLOAT_GRID,
+    theme.FLOAT_ACCENT, theme.MONO,
+    theme.FLOAT_ACCENT, theme.DLG_FIELD_FOCUS,
+)
 
 
 def _spec_to_ks(spec):
@@ -55,7 +79,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self.setWindowTitle("设置")
         self.setModal(True)
         self.setMinimumWidth(540)
-        self.setStyleSheet(theme.DIALOG_QSS)
+        self.setStyleSheet(theme.DIALOG_QSS + _EXTRA_QSS)
         self._build()
         self._load()
 
@@ -164,24 +188,34 @@ class SettingsDialog(QtWidgets.QDialog):
     def _save(self):
         from .hotkey import parse_hotkey
         o = self.owner
-        # 校验热键格式（至少一个修饰键 + 一个键，否则全局注册会失败）
-        specs = {"chat": _ks_to_spec(self.hk_chat.keySequence()),
-                 "translate": _ks_to_spec(self.hk_translate.keySequence()),
-                 "ocr": _ks_to_spec(self.hk_ocr.keySequence())}
-        bad = [k for k, s in specs.items() if s and parse_hotkey(s) is None]
-        if bad:
+        try:
+            # 校验热键格式（至少一个修饰键 + 一个键，否则全局注册会失败）
+            specs = {"chat": _ks_to_spec(self.hk_chat.keySequence()),
+                     "translate": _ks_to_spec(self.hk_translate.keySequence()),
+                     "ocr": _ks_to_spec(self.hk_ocr.keySequence())}
+            bad = [k for k, s in specs.items() if s and parse_hotkey(s) is None]
+            if bad:
+                QtWidgets.QMessageBox.warning(
+                    self, "热键无效",
+                    "以下热键格式无效（需要一个修饰键+一个按键）：\n%s"
+                    % ", ".join(bad))
+                return
+            o._set_tts(self.cb_tts.isChecked())
+            o._toggle_mute(self.cb_mute.isChecked())
+            o._on_volume_slider(self.vol_slider.value())
+            # 热键只保存到 prefs；真正重注册由窗口在对话框关闭后执行
+            # （见 PetWindow._open_settings），避免在模态事件循环里碰
+            # RegisterHotKey/原生事件过滤器导致进程崩溃。
+            o.prefs.set("hotkeys_" + o.char.key, specs)
+            key = self.cb_char.currentData()
+            if key:
+                o.prefs.set("character", key)
+            o.prefs.set("exam_badge", self.cb_exam.isChecked())
+            o._refresh_exam_badge()
+        except Exception:
+            import traceback
+            petlog.log("settings save 异常:\n%s" % traceback.format_exc())
             QtWidgets.QMessageBox.warning(
-                self, "热键无效",
-                "以下热键格式无效（需要一个修饰键+一个按键）：\n%s" % ", ".join(bad))
+                self, "保存失败", "保存设置时出错，已记录到 pet.log。")
             return
-        o._set_tts(self.cb_tts.isChecked())
-        o._toggle_mute(self.cb_mute.isChecked())
-        o._on_volume_slider(self.vol_slider.value())
-        o.prefs.set("hotkeys_" + o.char.key, specs)
-        o._apply_hotkey_overrides()
-        key = self.cb_char.currentData()
-        if key:
-            o.prefs.set("character", key)
-        o.prefs.set("exam_badge", self.cb_exam.isChecked())
-        o._refresh_exam_badge()
         self.accept()

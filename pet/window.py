@@ -5,6 +5,7 @@ import json
 import os
 import random
 import sys
+import traceback
 from datetime import date, datetime, timedelta
 
 import cv2
@@ -876,8 +877,11 @@ class PetWindow(QtWidgets.QWidget):
 
     def _apply_hotkey_overrides(self):
         """设置对话框保存热键后调用：反注册旧热键并重新注册，改键即时生效。"""
-        self._unregister_hotkeys()
-        self._setup_hotkey()
+        try:
+            self._unregister_hotkeys()
+            self._setup_hotkey()
+        except Exception:
+            petlog.log("重注册热键异常:\n%s" % traceback.format_exc())
 
     def _toggle_chat(self):
         """Hotkey action: pop the input if hidden, else dismiss it."""
@@ -1745,9 +1749,16 @@ class PetWindow(QtWidgets.QWidget):
         AppWhitelistDialog(self).exec_()
 
     def _open_settings(self):
-        """打开统一设置对话框（语音 / 热键 / 通用）。"""
+        """打开统一设置对话框（语音 / 热键 / 通用）。
+
+        热键重注册放在对话框的 exec_() 返回之后（下一轮事件循环）：
+        在模态对话框的嵌套事件循环里调用 RegisterHotKey / 安装原生事件
+        过滤器是 Qt 原生层的高危操作，可能直接让进程崩溃（绕过 Python
+        异常钩子、日志无痕）。
+        """
         from .settings_ui import SettingsDialog
         SettingsDialog(self).exec_()
+        QtCore.QTimer.singleShot(0, self._apply_hotkey_overrides)
 
     def _apply_ai_settings(self, cfg):
         old_history = self.brain.history
