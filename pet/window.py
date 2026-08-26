@@ -4,6 +4,7 @@ import glob
 import json
 import os
 import random
+import sys
 from datetime import date, datetime, timedelta
 
 import cv2
@@ -42,6 +43,17 @@ TYPE_STEP = 1
 READ_MS_PER_CHAR = 250
 READ_MS_MIN = 4000
 READ_MS_MAX = 20000
+
+
+def _app_icon_path():
+    """Locate app.ico for both source and frozen (PyInstaller) runs."""
+    if getattr(sys, "frozen", False):
+        base = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+    else:
+        # Script is at pet/window.py, project root is two levels up.
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(base, "app.ico")
+    return path if os.path.isfile(path) else None
 
 
 class CloneStateProbe(QtCore.QThread):
@@ -226,6 +238,9 @@ class PetWindow(QtWidgets.QWidget):
         # Frozen bubble anchor during a reply (set in _ask, follows on drag).
         self._chat_anchor = None
         self._info_panel_widget = None   # 信息面板（课程表/待办/OCR），懒创建
+        # 托盘模式：关闭窗口默认隐藏到托盘而不是退出；真退出由 _quit 执行。
+        self._quitting = False
+        self._tray_hint_shown = False
         # Typewriter reveal state (see TYPE_* constants).
         self._type_target = ""      # full text received so far (may still grow)
         self._type_shown = 0        # chars currently revealed in the bubble
@@ -235,6 +250,7 @@ class PetWindow(QtWidgets.QWidget):
 
         self.play("start")
         self._setup_hotkey()
+        self._setup_tray()
         self._setup_reminders()
         self._setup_greetings()
         self._setup_focus_tools()
@@ -792,6 +808,90 @@ class PetWindow(QtWidgets.QWidget):
         else:
             self.raise_()
             self.open_chat()
+
+    # ------------------------------------------------------------------ #
+    # System tray                                                          #
+    # ------------------------------------------------------------------ #
+
+    def _setup_tray(self):
+        """常驻系统托盘：关闭窗口只是隐藏，服务生命周期不再被误关打断。
+
+        托盘菜单：显示/隐藏、聊天、TTS、静音、语音克隆启停、退出。
+        语音克隆菜单项每次弹出时按真实状态重建（与右键菜单同源）。
+        """
+        if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
+            return
+        self._tray = QtWidgets.QSystemTrayIcon(self)
+        icon = _app_icon_path()
+        if icon:
+            self._tray.setIcon(QtGui.QIcon(icon))
+        self._update_tray_tooltip()
+        self._tray_menu = QtWidgets.QMenu()
+        self._tray_menu.aboutToShow.connect(self._rebuild_tray_menu)
+        self._tray.setContextMenu(self._tray_menu)
+        self._tray.activated.connect(self._on_tray_activated)
+        self._tray.show()
+
+    def _update_tray_tooltip(self):
+        if not getattr(self, "_tray", None):
+            return
+        st = tts.clone_state()
+        label = {"running": "语音克隆：运行中",
+                 "starting": "语音克隆：加载中",
+                 "stopped": "语音克隆：未启动"}.get(st, st)
+        self._tray.setToolTip("阿米娅桌面宠物 · %s · %s" % (
+            self.char.display_name, label))
+
+    def _rebuild_tray_menu(self):
+        m = self._tray_menu
+        m.clear()
+        vis = m.addAction("隐藏桌宠" if self.isVisible() else "显示桌宠")
+        vis.triggered.connect(self._toggle_tray_visible)
+        m.addAction("聊天…", self._tray_chat)
+        m.addSeparator()
+        tts_act = m.addAction("朗读回答（语音合成）")
+        tts_act.setCheckable(True)
+        tts_act.setEnabled(self._tts_supported and tts.available())
+        tts_act.setChecked(self._tts_on)
+        tts_act.toggled.connect(self._set_tts)
+        mute = m.addAction("静音")
+        mute.setCheckable(True)
+        mute.setChecked(not self.voice.enabled)
+        mute.toggled.connect(self._toggle_mute)
+        m.addSeparator()
+        if self._use_clone:
+            state = tts.clone_state()
+            if state == "running":
+                m.addAction("停止语音克隆服务（释放显存）", self._stop_clone)
+            elif state == "starting":
+                loading = m.addAction("语音克隆服务加载中…")
+                loading.setEnabled(False)
+            else:
+                m.addAction("启动语音克隆服务（AI 声线）", self._start_clone)
+            m.addSeparator()
+        m.addAction("退出", self._quit)
+
+    def _on_tray_activated(self, reason):
+        if reason == QtWidgets.QSystemTrayIcon.Trigger:
+            self._toggle_tray_visible()
+        elif reason == QtWidgets.QSystemTrayIcon.DoubleClick:
+            self._show_pet()
+            self.open_chat()
+
+    def _toggle_tray_visible(self):
+        if self.isVisible():
+            self.hide()
+        else:
+            self._show_pet()
+
+    def _show_pet(self):
+        self.show()
+        self.raise_()
+        self.activateWindow()
+
+    def _tray_chat(self):
+        self._show_pet()
+        self.open_chat()
 
     # ------------------------------------------------------------------ #
     # Quick translation                                                     #
@@ -1714,6 +1814,7 @@ class PetWindow(QtWidgets.QWidget):
     def _clone_probe_done(self, probe):
         if self._clone_probe is probe:
             self._clone_probe = None
+            self._update_tray_tooltip()   # 托盘提示同步克隆状态
 
     def _start_clone(self):
         """Manually start the voice-clone service (model load ~30s).
@@ -1787,6 +1888,7 @@ class PetWindow(QtWidgets.QWidget):
         self._save_vol_timer.start(400)  # persist ~0.4s after the last drag
 
     def _quit(self):
+        self._quitting = True   # 后续 closeEvent 直接放行，不再隐藏到托盘
         if getattr(self, "hotkey", None):
             self.hotkey.unregister()
         if getattr(self, "_translate_hotkey", None):
@@ -1831,6 +1933,22 @@ class PetWindow(QtWidgets.QWidget):
         QtWidgets.QApplication.quit()
 
     def closeEvent(self, event):
-        """Handle window close (e.g. Windows shutdown) — same cleanup as _quit."""
-        self._quit()
-        event.accept()
+        """关闭窗口：隐藏到托盘而不是退出（Windows 关机/会话结束时才真退出）。
+
+        语音克隆服务跟随进程生命周期：只要桌宠还驻留托盘，服务就一直可管理；
+        真正退出（托盘「退出」/ 系统关机）时 _quit 会停掉克隆服务并清理。
+        """
+        app = QtWidgets.QApplication.instance()
+        saving = bool(getattr(app, "isSavingSession", lambda: False)()) if app else False
+        if (not getattr(self, "_tray", None) or self._quitting or saving):
+            self._quit()
+            event.accept()
+            return
+        event.ignore()
+        self.hide()
+        if not self._tray_hint_shown:
+            self._tray_hint_shown = True
+            self._tray.showMessage(
+                "阿米娅还在",
+                "桌宠已最小化到托盘。右键托盘图标可退出，或从托盘菜单快速开关语音。",
+                QtWidgets.QSystemTrayIcon.Information, 4000)
