@@ -148,11 +148,12 @@ class PetWindow(QtWidgets.QWidget):
         self._drag_offset = None
         self._moved = False         # whether the current press turned into a drag
         self._loops_left = 0        # remaining loop_count replays this clip
-        # Frame cache for looping clips: decode+key+compress each frame once on
-        # the first pass (stored as PNG bytes, budgeted by compressed size),
-        # then replay decodes from memory so the idle loop stops re-running
-        # floodFill/erode/resize every tick.
-        self._frames = []           # cached PNG bytes of processed frames
+        # Frame cache for looping clips: decode+key each frame once on the
+        # first pass (raw BGRA, keeps the first loop at original speed), then
+        # replay from memory so the idle loop stops re-running
+        # floodFill/erode/resize every tick.  A lazy background pass converts
+        # raw frames to PNG to shrink memory (see _compress_tick).
+        self._frames = []           # cached frames: raw BGRA ndarray 或 PNG bytes
         self._caching = False       # accumulate frames this pass?
         self._replay = False        # serving from cache instead of decoding?
         self._replay_i = 0          # next index into _frames when replaying
@@ -161,6 +162,13 @@ class PetWindow(QtWidgets.QWidget):
         self.badge = None              # created in _setup_focus_tools()
         self._exam_badge = None        # created in _setup_tasks()（moveEvent 可能先触发）
 
+        # Lazy background compression: after a looping clip's first pass,
+        # raw BGRA frames are converted to PNG one-by-one on this timer
+        # so the animation never stutters from encoding overhead.
+        self._compress_timer = QtCore.QTimer(self)
+        self._compress_timer.setSingleShot(False)
+        self._compress_timer.timeout.connect(self._compress_tick)
+        self._compress_i = 0
         self._skip_count = 0      # frame-skip counter (resets per clip)
         self._last_bgra = None    # last shown frame, reused when skipping
         self._first_frame_shown = False  # place window after first real frame
@@ -1194,6 +1202,8 @@ class PetWindow(QtWidgets.QWidget):
         self._cache_full = False
         self._skip_count = 0
         self._last_bgra = None
+        self._compress_timer.stop()
+        self._compress_i = 0
         self._alpha = None
         self._bbox = None
         self._chat_anchor = None
@@ -1435,6 +1445,8 @@ class PetWindow(QtWidgets.QWidget):
         # move/drag) are worth caching; short loop_count clips aren't.
         self._frames = []
         self._mem.clear_cache()         # release old clip's budget
+        self._compress_timer.stop()     # cancel in-flight compression
+        self._compress_i = 0
         self._replay = False
         self._replay_i = 0
         self._caching = action.loop
@@ -1529,6 +1541,9 @@ class PetWindow(QtWidgets.QWidget):
                 else:
                     bgra = cached
                 self._show(bgra)
+                # 重放期间后台把原始帧压成 PNG 腾内存（不占热路径）。
+                self._compress_i = 0
+                self._compress_timer.start(120)
                 return
             if self._cur_action.loop:
                 self._cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
@@ -1560,25 +1575,46 @@ class PetWindow(QtWidgets.QWidget):
                 self._mem.tick_gc()
                 return
         bgra = key_frame(frame, self.char.scale * self._dpr)
-        # ── first pass: compress each frame to PNG right away ───────────
-        # 预算按压缩后大小记账：整段循环（含 idle 234 帧）通常能完整入缓存，
-        # 第二遍起纯重放、不再重新抠图——修复"原始帧撑爆预算 -> 缓存中止 ->
-        # 每轮循环全量重抠"的 CPU 黑洞。
+        # ── first pass: store raw BGRA (fast, keeps original playback speed) ──
+        # 预算按"估算压缩后大小"记账（PNG 约 10-15:1），而不是原始大小——
+        # 否则几帧就撑爆预算导致缓存中止、每轮循环全量重抠图。
+        # 实际压缩由 _compress_tick 在重放期间后台完成，并把账目修正为真实值。
         if self._caching and not self._cache_full:
-            ok_png, png = cv2.imencode(
-                ".png", bgra, [cv2.IMWRITE_PNG_COMPRESSION, 1])
-            if ok_png:
-                png_bytes = png.tobytes()
-                frame_mb = len(png_bytes) / (1024 * 1024)
-                if self._mem.can_cache(frame_mb):
-                    self._frames.append(png_bytes)
-                    self._mem.add_cached(frame_mb)
-                else:
-                    self._cache_full = True
-                    self._mem.force_collect()
+            raw_mb = bgra.nbytes / (1024 * 1024)
+            est_mb = max(0.05, raw_mb / 12.0)
+            if self._mem.can_cache(est_mb):
+                self._frames.append(bgra)
+                self._mem.add_cached(est_mb)
+            else:
+                self._cache_full = True
+                self._mem.force_collect()
         self._show(bgra)
         self._last_bgra = bgra      # save for potential frame-skip reuse
         self._mem.tick_gc()
+
+    def _compress_tick(self):
+        """Lazy background compression: convert one cached raw BGRA frame to
+        PNG bytes per call.  Runs during replay so animation stays smooth;
+        memory gradually shrinks without any hot-path encoding cost."""
+        if self._compress_i >= len(self._frames):
+            self._compress_timer.stop()
+            return
+        cached = self._frames[self._compress_i]
+        if isinstance(cached, bytes):
+            # Already compressed (shouldn't happen, but guard it).
+            self._compress_i += 1
+            return
+        ok, png = cv2.imencode(".png", cached,
+                                [cv2.IMWRITE_PNG_COMPRESSION, 1])
+        if ok:
+            png_bytes = png.tobytes()
+            old_mb = cached.nbytes / (1024 * 1024)
+            new_mb = len(png_bytes) / (1024 * 1024)
+            self._frames[self._compress_i] = png_bytes
+            # 账目从"首遍的估算值"修正为真实压缩大小（对齐 _tick 的记账）。
+            est_mb = max(0.05, old_mb / 12.0)
+            self._mem.add_cached(new_mb - est_mb)
+        self._compress_i += 1
 
     def _show(self, bgra):
         ph, pw = bgra.shape[:2]                 # physical pixels
