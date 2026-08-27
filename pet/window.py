@@ -1440,13 +1440,12 @@ class PetWindow(QtWidgets.QWidget):
         self._caching = action.loop
         self._cache_full = False        # reset budget tracker for this clip
         self._skip_count = 0            # reset frame-skip counter
-        # 帧率上限 30fps：桌面宠物无需 60fps，重放解码/重绘开销直接减半以上。
+        # 按视频原生帧率播放（保持原始速度）；QTimer 0ms 未定义且烧 CPU，下限 1ms。
         fps = self._cap.get(cv2.CAP_PROP_FPS)
         if fps and fps > 1:
-            interval = round(1000 / min(fps, 30.0))
+            interval = round(1000 / fps)
         else:
             interval = action.interval
-        # QTimer with 0 ms interval is undefined/CPU-heavy; cap at 1 ms.
         self._timer.start(max(1, interval))
         self._schedule_rest(action_name)
 
