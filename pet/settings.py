@@ -60,7 +60,20 @@ def characters_dirs():
 
 
 class Settings:
-    """Tiny JSON-backed key/value store; writes are best-effort and atomic."""
+    """Tiny JSON-backed key/value store; writes are best-effort and atomic.
+
+    schema_version 用于轻量迁移：v2 起启动时清理未知/废弃键（settings.json
+    里功能开关、权限、热键越积越多，删掉已移除功能留下的残留）。
+    """
+
+    _SCHEMA_VERSION = 2
+    # 已知有效顶层键；前缀模式（perm_*/hotkeys_*）也有效。
+    _KNOWN_KEYS = frozenset({
+        "volume", "voice_enabled", "tts_on", "character", "exam_badge",
+        "clone_manual_autostop", "check_updates", "knowledge_embed",
+        "pet_pos", "schema_version",
+    })
+    _KNOWN_PREFIXES = ("perm_", "hotkeys_")
 
     def __init__(self):
         self.path = _settings_path()
@@ -70,6 +83,24 @@ class Settings:
                 self.data = json.load(f)
         except Exception:
             self.data = {}
+        self._migrate()
+
+    def _migrate(self):
+        """按 schema 版本迁移；v1 -> v2 清理未知键并写回版本号。"""
+        try:
+            version = int(self.data.get("schema_version", 1))
+        except (TypeError, ValueError):
+            version = 1
+        if version >= self._SCHEMA_VERSION:
+            return
+        keep = {}
+        for key, value in self.data.items():
+            if (key in self._KNOWN_KEYS
+                    or key.startswith(self._KNOWN_PREFIXES)):
+                keep[key] = value
+        self.data = keep
+        self.data["schema_version"] = self._SCHEMA_VERSION
+        self._save()
 
     def get(self, key, default=None):
         return self.data.get(key, default)
