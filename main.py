@@ -51,6 +51,14 @@ def main():
     # （%APPDATA%\AmiyaPet\pet.log），否则只能盲猜。
     petlog.init_logging()
 
+    # 单实例守护：已有实例在运行则让它回到前台，本实例退出——
+    # 避免两个桌宠抢全局热键 / 双份动画。
+    from pet import single_instance
+    if not single_instance.acquire():
+        petlog.log("已有实例在运行，请求显示后退出")
+        single_instance.request_show()
+        sys.exit(0)
+
     # High-DPI scaling is enabled by default in PyQt5 5.15+; the explicit
     # attribute is deprecated and prints a runtime warning.
     app = QtWidgets.QApplication(sys.argv)

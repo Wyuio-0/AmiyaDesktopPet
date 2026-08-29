@@ -29,10 +29,11 @@ WizardStyle=modern
 
 [Files]
 ; onedir 分发（exe + _internal 必须保持同目录结构）
-; Excludes 双保险：ai_config.json（含 key）、.claude（本地工具状态）
+; Excludes 三重：ai_config.json（含 key）、.claude（本地工具状态）、
+; _internal\characters（与 exe 旁的 characters\ 重复，装一份即可，安装包减半）
 Source: "..\dist\DesktopPet\*"; DestDir: "{app}"; \
     Flags: recursesubdirs createallsubdirs; \
-    Excludes: "ai_config.json,.claude"
+    Excludes: "ai_config.json,.claude,_internal\characters"
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\DesktopPet.exe"

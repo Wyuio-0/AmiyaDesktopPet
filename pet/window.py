@@ -31,7 +31,7 @@ from .translate import TranslationPopup, TranslateWorker
 from .translate import _translate_via_ai, _translate_via_google
 from .voice import VoicePlayer
 from . import actions, knowledge, logging as petlog, memory, schedule, theme, translate, tts
-from . import updater
+from . import single_instance, updater
 
 # Typewriter reveal: show the streamed reply at a steady pace regardless of how
 # bursty the network delivery is. One "step" reveals TYPE_STEP chars every
@@ -1729,9 +1729,19 @@ class PetWindow(QtWidgets.QWidget):
                     pos = self.mapFromGlobal(QtCore.QPoint(x, y))
                     if not self._opaque_at(pos):
                         return True, -1    # HTTRANSPARENT -> 穿透到下层
+                elif msg.message == self._show_request_msg():
+                    # 单实例：第二个实例广播的「显示请求」——回到前台
+                    self._show_pet()
+                    return True, 0
             except Exception:
                 pass  # 命中测试失败就按默认行为处理，不让它崩应用
         return super().nativeEvent(eventType, message)
+
+    def _show_request_msg(self):
+        """单实例「显示请求」消息 id（惰性注册，跨进程一致）。"""
+        if getattr(self, "_show_msg_id", None) is None:
+            self._show_msg_id = single_instance.show_message_id()
+        return self._show_msg_id or -1
 
     # ------------------------------------------------------------------ #
     # Interactions                                                         #
