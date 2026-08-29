@@ -1634,10 +1634,10 @@ class PetWindow(QtWidgets.QWidget):
             self.resize(lw, lh)
             self.label.resize(lw, lh)
             # The window has no size until the first frame arrives, so do the
-            # initial bottom-center placement now rather than in __init__.
+            # initial placement now rather than in __init__（恢复上次位置）。
             if not self._first_frame_shown:
                 self._first_frame_shown = True
-                self._place_bottom_center()
+                self._restore_position()
 
     # ------------------------------------------------------------------ #
     # Geometry helpers                                                     #
@@ -1647,6 +1647,35 @@ class PetWindow(QtWidgets.QWidget):
         screen = QtWidgets.QApplication.primaryScreen().availableGeometry()
         self.move(screen.center().x() - self.width() // 2,
                   screen.bottom() - self.height())
+
+    # ── 位置记忆：记住停靠位置，重启/多屏变化时恢复 ─────────────────────
+
+    def _save_pet_position(self):
+        """把当前窗口位置写入 prefs（拖拽结束 / 退出时调用）。"""
+        g = self.frameGeometry()
+        try:
+            self.prefs.set("pet_pos", [g.x(), g.y()])
+        except Exception:
+            pass
+
+    def _position_visible(self, x, y, w, h):
+        """窗口矩形是否落在某个屏幕的可用区域内（多显示器 / 拔掉显示器检测）。"""
+        rect = QtCore.QRect(x, y, w, h)
+        for screen in QtWidgets.QApplication.screens():
+            if rect.intersects(screen.availableGeometry()):
+                return True
+        return False
+
+    def _restore_position(self):
+        """恢复上次停靠位置；保存的位置已不在任何屏幕（拔了外接屏）时，
+        回退到主屏底部居中。"""
+        pos = self.prefs.get("pet_pos")
+        if (isinstance(pos, (list, tuple)) and len(pos) == 2
+                and self._position_visible(int(pos[0]), int(pos[1]),
+                                           self.width(), self.height())):
+            self.move(int(pos[0]), int(pos[1]))
+            return
+        self._place_bottom_center()
 
     def _body_rect(self):
         """Global-coord QRect of Amiya's visible body (opaque pixels).
@@ -1729,6 +1758,7 @@ class PetWindow(QtWidgets.QWidget):
         self._drag_offset = None
         if was_dragging and self._moved:
             self.play("idle")
+            self._save_pet_position()   # 记住停靠位置
         elif was_dragging and self._opaque_at(e.pos()):
             self.play(self.char.interaction("on_click") or "click")
             self.voice.play("click")
@@ -2071,6 +2101,7 @@ class PetWindow(QtWidgets.QWidget):
     def _quit(self):
         self._quitting = True   # 后续 closeEvent 直接放行，不再隐藏到托盘
         petlog.log("exit")
+        self._save_pet_position()   # 退出前记住当前位置
         self._unregister_hotkeys()
         self.voice.stop()
         # Stop the clone-state probe (short-lived /ping thread) so it never
