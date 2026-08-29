@@ -23,12 +23,10 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
-# 角色资源随包发布，但**排除敏感/本地文件**：ai_config.json 可能含有 API key，
-# .claude 等本地工具状态也不该进发布物（可被反解提取，打进去=公开）。
-# Tree 是 (src, dst) 二元组的迭代器，不能直接作为 Analysis(datas=...) 的元素，
-# 必须在 Analysis 构造后追加（PyInstaller 官方用法）。
-a.datas += Tree('characters', prefix='characters',
-                excludes=['ai_config.json', '.claude'])
+# 角色素材**不**打进 _internal：onedir 发布时角色放在 exe 旁的 characters\，
+# 由 build.ps1（本地）或 CI 的 "Sync characters" 步骤同步——全链路只保留
+# 一份，安装包/zip 不再重复携带两倍素材。ai_config.json / .claude 由同步
+# 步骤一并剔除。
 
 # onedir 打包：DLL 就地加载，规避 onefile 解压后 Qt5Core.dll 加载崩溃
 # （0xc0000409）。发布时把整个 dist/DesktopPet/ 目录打成 zip。

@@ -52,6 +52,12 @@ jobs:
           pip install pyinstaller==6.21.0
       - name: Build DesktopPet.exe
         run: python -m PyInstaller --noconfirm --clean DesktopPet.spec
+      - name: Sync characters into dist (exe 旁，唯一一份)
+        shell: pwsh
+        run: |
+          Copy-Item characters dist\DesktopPet\characters -Recurse -Force
+          Get-ChildItem dist\DesktopPet\characters -Recurse -Filter 'ai_config.json' -File | Remove-Item -Force
+          Get-ChildItem dist\DesktopPet\characters -Recurse -Directory -Filter '.claude' | Remove-Item -Recurse -Force
       - name: Verify no secrets leaked into dist
         shell: pwsh
         run: |
@@ -64,9 +70,6 @@ jobs:
             exit 1
           }
           Write-Host "dist clean"
-      - name: Trim bundled characters (zip/installer 只保留一份素材)
-        shell: pwsh
-        run: Remove-Item dist\DesktopPet\_internal\characters -Recurse -Force
       - name: Package zip (onedir)
         shell: pwsh
         run: Compress-Archive -Path dist\DesktopPet\* -DestinationPath DesktopPet-onedir.zip -Force
@@ -116,9 +119,12 @@ jobs:
           pip install pyinstaller==6.21.0
       - name: Build DesktopPet.exe
         run: python -m PyInstaller --noconfirm --clean DesktopPet.spec
-      - name: Trim bundled characters (zip/installer 只保留一份素材)
+      - name: Sync characters into dist (exe 旁，唯一一份)
         shell: pwsh
-        run: Remove-Item dist\DesktopPet\_internal\characters -Recurse -Force
+        run: |
+          Copy-Item characters dist\DesktopPet\characters -Recurse -Force
+          Get-ChildItem dist\DesktopPet\characters -Recurse -Filter 'ai_config.json' -File | Remove-Item -Force
+          Get-ChildItem dist\DesktopPet\characters -Recurse -Directory -Filter '.claude' | Remove-Item -Recurse -Force
       - name: Package zip (onedir)
         shell: pwsh
         run: Compress-Archive -Path dist\DesktopPet\* -DestinationPath DesktopPet-onedir.zip -Force
