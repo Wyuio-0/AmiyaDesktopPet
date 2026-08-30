@@ -144,8 +144,8 @@ class InfoPanel(QtWidgets.QWidget):
             | QtCore.Qt.WindowStaysOnTopHint
             | QtCore.Qt.Tool
         )
-        self.setMinimumSize(720, 480)
-        self.resize(860, 580)
+        self.setMinimumSize(700, 560)
+        self.resize(760, 640)
         self.setStyleSheet(_QSS)
         self.setObjectName("PanelRoot")
         self._build()
@@ -223,11 +223,11 @@ class InfoPanel(QtWidgets.QWidget):
 
         self.sched_view = QtWidgets.QTextBrowser(page)
         self.sched_view.setOpenExternalLinks(False)
-        # 周课表可视化色块视图（可滚动）
+        # 周课表可视化色块视图（自适应填满，无滚动条）
         self.timetable = TimetableView(page)
         self.timetable_area = QtWidgets.QScrollArea(page)
         self.timetable_area.setWidget(self.timetable)
-        self.timetable_area.setWidgetResizable(False)
+        self.timetable_area.setWidgetResizable(True)
         self.timetable_area.setFrameShape(QtWidgets.QFrame.NoFrame)
         self.timetable_area.setStyleSheet(
             "QScrollArea{background:%s;border:none;}"

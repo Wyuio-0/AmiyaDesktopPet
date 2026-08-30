@@ -9,11 +9,11 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from . import theme
 
-ROW_H = 30           # 每节课的高度（px）
-COL_W = 104          # 每列宽度（px）
-RULER_W = 60         # 左侧节次/时间轴宽度
-HEADER_H = 30        # 顶部星期标题高度
-MARGIN = 12
+ROW_H = 30           # 每节课的高度（px，仅作注释参考）
+COL_W = 104          # 每列宽度（px，仅作注释参考）
+RULER_W = 52         # 左侧节次/时间轴宽度（固定）
+HEADER_H = 26        # 顶部星期标题高度（固定）
+MARGIN = 10
 GAP = 3              # 课程块之间的垂直间隙
 MAX_SECTIONS = 13    # 一天最多 13 节课
 
@@ -37,7 +37,7 @@ _COLORS = [
 
 
 class TimetableView(QtWidgets.QWidget):
-    """可滚动的周课表色块视图（数据来自 Schedule）。"""
+    """自适应填满窗口的周课表色块视图（无滚动条，文字自动换行）。"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -47,6 +47,7 @@ class TimetableView(QtWidgets.QWidget):
         self._notes = []
         self._color_of = {}         # 课程名 -> QColor（稳定配色）
         self.setAutoFillBackground(True)
+        self.setMinimumSize(560, 400)
 
     # ── 数据 ─────────────────────────────────────────────────────────
 
@@ -66,20 +67,25 @@ class TimetableView(QtWidgets.QWidget):
                     idx += 1
         self.update()
 
-    # ── 尺寸 ─────────────────────────────────────────────────────────
+    # ── 尺寸（自适应填满窗口，无滚动条）──────────────────────────────
 
     def sizeHint(self):
-        w = MARGIN * 2 + RULER_W + len(_COL_WEEKDAYS) * COL_W
-        h = (MARGIN * 2 + HEADER_H + MAX_SECTIONS * ROW_H
-             + (34 if self._notes else 6))
-        return QtCore.QSize(w, h)
+        """随窗口伸缩：列宽/行高由可用空间均分。"""
+        return self.minimumSize()
 
     def _grid_rect(self):
         """网格区域（不含左侧时间轴与顶部标题）。"""
         x = MARGIN + RULER_W
         y = MARGIN + HEADER_H
-        return QtCore.QRect(x, y, len(_COL_WEEKDAYS) * COL_W,
-                            MAX_SECTIONS * ROW_H)
+        w = max(100, self.width() - x - MARGIN)
+        h = max(100, self.height() - y - MARGIN)
+        return QtCore.QRect(x, y, w, h)
+
+    def _col_w(self):
+        return self._grid_rect().width() / len(_COL_WEEKDAYS)
+
+    def _row_h(self):
+        return self._grid_rect().height() / MAX_SECTIONS
 
     # ── 绘制 ─────────────────────────────────────────────────────────
 
@@ -100,50 +106,56 @@ class TimetableView(QtWidgets.QWidget):
         line = QtGui.QPen(QtGui.QColor(theme.FLOAT_GRID), 1)
         p.setPen(line)
         # 行线（每节一条横线）
+        row_h = self._row_h()
         for r in range(MAX_SECTIONS + 1):
-            y = g.top() + r * ROW_H
+            y = round(g.top() + r * row_h)
             p.drawLine(g.left(), y, g.right(), y)
         # 列线
+        col_w = self._col_w()
         for c in range(len(_COL_WEEKDAYS) + 1):
-            x = g.left() + c * COL_W
+            x = round(g.left() + c * col_w)
             p.drawLine(x, g.top(), x, g.bottom())
 
     def _paint_header(self, p):
-        font = QtGui.QFont(theme.FONT, 14, QtGui.QFont.Bold)
+        font = QtGui.QFont(theme.FONT, 13, QtGui.QFont.Bold)
         p.setFont(font)
         p.setPen(QtGui.QColor(theme.FLOAT_TEXT))
+        col_w = self._col_w()
         for i, wd in enumerate(_COL_WEEKDAYS):
-            x = MARGIN + RULER_W + i * COL_W
-            rect = QtCore.QRect(x, MARGIN, COL_W, HEADER_H)
+            x = round(MARGIN + RULER_W + i * col_w)
+            rect = QtCore.QRect(x, MARGIN, round(col_w), HEADER_H)
             p.drawText(rect, QtCore.Qt.AlignCenter,
                        "周%s" % _DAY_LABELS[wd])
 
     def _paint_ruler(self, p):
         # 节次/时间轴：显示起始时刻（若有 sections）
-        p.setFont(QtGui.QFont(theme.FONT, 10))
+        p.setFont(QtGui.QFont(theme.FONT, 9))
         p.setPen(QtGui.QColor(theme.FLOAT_TEXT_DIM))
         secs = getattr(self._schedule, "sections", None) or {}
+        row_h = self._row_h()
         for r in range(MAX_SECTIONS):
             sec = r + 1
             label = str(sec)
             t = secs.get(str(sec))
             if t:
                 label = "%d %s" % (sec, t)
-            y = MARGIN + HEADER_H + r * ROW_H
-            rect = QtCore.QRect(MARGIN, y, RULER_W - 6, ROW_H)
+            y = round(MARGIN + HEADER_H + r * row_h)
+            rect = QtCore.QRect(MARGIN, y, RULER_W - 6, round(row_h))
             p.drawText(rect, QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter,
                        label)
 
     def _paint_courses(self, p):
         if self._schedule is None:
             return
+        col_w = self._col_w()
+        row_h = self._row_h()
         for i, wd in enumerate(_COL_WEEKDAYS):
-            col_x = MARGIN + RULER_W + i * COL_W
+            col_x = round(MARGIN + RULER_W + i * col_w)
             for c in self._courses[wd]:
                 x = col_x + 2
-                y = MARGIN + HEADER_H + (c.sec_start - 1) * ROW_H
-                h = (c.sec_end - c.sec_start + 1) * ROW_H - GAP
-                rect = QtCore.QRect(x, y, COL_W - 4, h)
+                y = round(MARGIN + HEADER_H + (c.sec_start - 1) * row_h)
+                h = round((c.sec_end - c.sec_start + 1) * row_h - GAP)
+                rect = QtCore.QRect(x, y, round(col_w) - 4, h)
                 active = not (self._week_no and not c.active_on(self._week_no))
                 color = self._color_of.get(c.name, _COLORS[0])
                 if not active:
@@ -162,44 +174,38 @@ class TimetableView(QtWidgets.QWidget):
                 self._paint_course_text(p, rect, c)
 
     def _paint_course_text(self, p, rect, c):
-        """课程名 + 老师 @教室 画在块内（块太矮时只画课程名）。"""
-        text_color = QtGui.QColor(255, 255, 255)
-        p.setPen(text_color)
-        inner = rect.adjusted(6, 2, -6, -2)
-        if rect.height() >= 2 * 16:
-            p.setFont(QtGui.QFont(theme.FONT, 12, QtGui.QFont.Bold))
-            p.drawText(inner, QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop,
-                       _clip(c.name, inner.width(), p.font()))
+        """课程名（自动换行，最多三行）+ 老师 @教室 画在块内。"""
+        inner = rect.adjusted(4, 2, -4, -2)
+        if rect.height() >= 44:
+            # 上：课程名（最多三行）；下：老师 @教室
+            name_h = min(3 * 14, max(14, inner.height() - 14))
+            name_rect = QtCore.QRect(inner)
+            name_rect.setHeight(max(13, name_h))
+            p.setFont(QtGui.QFont(theme.FONT, 11, QtGui.QFont.Bold))
+            p.setPen(QtGui.QColor(255, 255, 255))
+            p.drawText(name_rect,
+                       QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop
+                       | QtCore.Qt.TextWordWrap, c.name)
             detail = " ".join(x for x in (c.teacher, c.room) if x)
             if detail:
-                p.setFont(QtGui.QFont(theme.FONT, 10))
-                p.setPen(QtGui.QColor(235, 235, 235))
                 drect = QtCore.QRect(inner)
-                drect.setTop(inner.top() + 16)
+                drect.setTop(inner.top() + name_h)
+                p.setFont(QtGui.QFont(theme.FONT, 9))
+                p.setPen(QtGui.QColor(240, 240, 240))
                 p.drawText(drect,
-                           QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop,
-                           _clip(detail, inner.width(), p.font()))
+                           QtCore.Qt.AlignHCenter | QtCore.Qt.AlignTop
+                           | QtCore.Qt.TextWordWrap, detail)
         else:
-            p.setFont(QtGui.QFont(theme.FONT, 11, QtGui.QFont.Bold))
-            p.drawText(inner, QtCore.Qt.AlignCenter,
-                       _clip(c.name, inner.width(), p.font()))
+            p.setFont(QtGui.QFont(theme.FONT, 10, QtGui.QFont.Bold))
+            p.setPen(QtGui.QColor(255, 255, 255))
+            p.drawText(inner, QtCore.Qt.AlignCenter | QtCore.Qt.TextWordWrap,
+                       c.name)
 
     def _paint_notes(self, p):
         if not self._notes:
             return
-        p.setFont(QtGui.QFont(theme.FONT, 11))
+        p.setFont(QtGui.QFont(theme.FONT, 10))
         p.setPen(QtGui.QColor(theme.FLOAT_TEXT_DIM))
-        y = MARGIN + HEADER_H + MAX_SECTIONS * ROW_H + 8
-        p.drawText(QtCore.QRect(MARGIN, y, self.width() - 2 * MARGIN, 24),
-                   QtCore.Qt.AlignLeft, "网课（无固定时间）：" + "；".join(self._notes))
-
-
-def _clip(text, width, font):
-    """按像素宽度截断文本并加省略号。"""
-    m = QtGui.QFontMetrics(font)
-    if m.horizontalAdvance(text) <= width:
-        return text
-    ell = "…"
-    while text and m.horizontalAdvance(text + ell) > width:
-        text = text[:-1]
-    return text + ell
+        y = self._grid_rect().bottom() + 6
+        p.drawText(QtCore.QRect(MARGIN, y, self.width() - 2 * MARGIN, 22),
+                   QtCore.Qt.AlignLeft, "网课：" + "；".join(self._notes))
