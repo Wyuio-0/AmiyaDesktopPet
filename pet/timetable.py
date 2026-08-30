@@ -52,9 +52,12 @@ class TimetableView(QtWidgets.QWidget):
     # ── 数据 ─────────────────────────────────────────────────────────
 
     def set_data(self, sched, week_no):
-        """填充课表数据并重绘。week_no 用于标记「本周不上」。"""
+        """填充课表数据并重绘。只显示第 week_no 周真正上课的课；
+        学期未开始（week_no<1）时按第 1 周预览并显示提示。"""
         self._schedule = sched
         self._week_no = week_no
+        self._eff_week = week_no if (week_no or 0) >= 1 else 1
+        self._preview_note = not (week_no or 0) >= 1
         self._notes = list(sched.notes)
         self._courses = {wd: sched.courses_on(wd, None)
                          for wd in range(1, 8)}
@@ -152,25 +155,17 @@ class TimetableView(QtWidgets.QWidget):
         for i, wd in enumerate(_COL_WEEKDAYS):
             col_x = round(MARGIN + RULER_W + i * col_w)
             for c in self._courses[wd]:
+                # 只画本周（第 _eff_week 周）真正上课的课
+                if not c.active_on(self._eff_week):
+                    continue
                 x = col_x + 2
                 y = round(MARGIN + HEADER_H + (c.sec_start - 1) * row_h)
                 h = round((c.sec_end - c.sec_start + 1) * row_h - GAP)
                 rect = QtCore.QRect(x, y, round(col_w) - 4, h)
-                active = not (self._week_no and not c.active_on(self._week_no))
                 color = self._color_of.get(c.name, _COLORS[0])
-                if not active:
-                    color = QtGui.QColor(color)
-                    color.setAlpha(70)
                 p.setPen(QtGui.QPen(QtGui.QColor(color).darker(130), 1))
                 p.setBrush(QtGui.QBrush(color))
                 p.drawRoundedRect(rect, 4, 4)
-                if not active:
-                    # 虚线框：本周不上
-                    pen = QtGui.QPen(QtGui.QColor(theme.FLOAT_TEXT_DIM), 1,
-                                     QtCore.Qt.DashLine)
-                    p.setPen(pen)
-                    p.setBrush(QtCore.Qt.NoBrush)
-                    p.drawRoundedRect(rect, 4, 4)
                 self._paint_course_text(p, rect, c)
 
     def _paint_course_text(self, p, rect, c):
@@ -202,10 +197,19 @@ class TimetableView(QtWidgets.QWidget):
                        c.name)
 
     def _paint_notes(self, p):
-        if not self._notes:
-            return
-        p.setFont(QtGui.QFont(theme.FONT, 10))
-        p.setPen(QtGui.QColor(theme.FLOAT_TEXT_DIM))
         y = self._grid_rect().bottom() + 6
-        p.drawText(QtCore.QRect(MARGIN, y, self.width() - 2 * MARGIN, 22),
-                   QtCore.Qt.AlignLeft, "网课：" + "；".join(self._notes))
+        if self._preview_note and self._schedule is not None:
+            ts = getattr(self._schedule, "term_start", None)
+            head = "学期尚未开始" + ("（%s 开学）" % ts.isoformat() if ts else "")
+            p.setFont(QtGui.QFont(theme.FONT, 10))
+            p.setPen(QtGui.QColor(theme.FLOAT_GOLD))
+            p.drawText(QtCore.QRect(MARGIN, y, self.width() - 2 * MARGIN, 20),
+                       QtCore.Qt.AlignLeft,
+                       "⚠ %s——以下按第 1 周安排显示" % head)
+            y += 20
+        if self._notes:
+            p.setFont(QtGui.QFont(theme.FONT, 10))
+            p.setPen(QtGui.QColor(theme.FLOAT_TEXT_DIM))
+            p.drawText(QtCore.QRect(MARGIN, y, self.width() - 2 * MARGIN, 20),
+                       QtCore.Qt.AlignLeft,
+                       "网课：" + "；".join(self._notes))
