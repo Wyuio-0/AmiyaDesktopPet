@@ -51,13 +51,13 @@ class TimetableView(QtWidgets.QWidget):
 
     # ── 数据 ─────────────────────────────────────────────────────────
 
-    def set_data(self, sched, week_no):
-        """填充课表数据并重绘。只显示第 week_no 周真正上课的课；
-        学期未开始（week_no<1）时按第 1 周预览并显示提示。"""
+    def set_data(self, sched, display_week):
+        """填充课表数据并重绘，只显示第 display_week 周真正上课的课。
+        学期未开始（sched.week_no() < 1）时显示金色提示，并注明是预览。"""
         self._schedule = sched
-        self._week_no = week_no
-        self._eff_week = week_no if (week_no or 0) >= 1 else 1
-        self._preview_note = not (week_no or 0) >= 1
+        self._eff_week = max(1, int(display_week or 1))
+        current = sched.week_no() or 0
+        self._preview_note = current < 1
         self._notes = list(sched.notes)
         self._courses = {wd: sched.courses_on(wd, None)
                          for wd in range(1, 8)}
@@ -205,7 +205,7 @@ class TimetableView(QtWidgets.QWidget):
             p.setPen(QtGui.QColor(theme.FLOAT_GOLD))
             p.drawText(QtCore.QRect(MARGIN, y, self.width() - 2 * MARGIN, 20),
                        QtCore.Qt.AlignLeft,
-                       "⚠ %s——以下按第 1 周安排显示" % head)
+                       "⚠ %s——以下为第 %d 周预览" % (head, self._eff_week))
             y += 20
         if self._notes:
             p.setFont(QtGui.QFont(theme.FONT, 10))

@@ -221,6 +221,23 @@ class InfoPanel(QtWidgets.QWidget):
         btns.addStretch(1)
         lay.addLayout(btns)
 
+        # 周导航：上一周 / 第 N 周 / 下一周（仅本周视图显示）
+        self._display_week = 1
+        self._max_week = 20
+        nav = QtWidgets.QHBoxLayout()
+        self.btn_prev_week = QtWidgets.QPushButton("◀ 上一周", page)
+        self.week_label = QtWidgets.QLabel("第 1 周", page)
+        self.week_label.setAlignment(QtCore.Qt.AlignCenter)
+        self.btn_next_week = QtWidgets.QPushButton("下一周 ▶", page)
+        self.btn_prev_week.clicked.connect(self._prev_week)
+        self.btn_next_week.clicked.connect(self._next_week)
+        nav.addWidget(self.btn_prev_week)
+        nav.addWidget(self.week_label, 1)
+        nav.addWidget(self.btn_next_week)
+        self.week_nav_widget = QtWidgets.QWidget(page)
+        self.week_nav_widget.setLayout(nav)
+        lay.addWidget(self.week_nav_widget)
+
         self.sched_view = QtWidgets.QTextBrowser(page)
         self.sched_view.setOpenExternalLinks(False)
         # 周课表可视化色块视图（自适应填满，无滚动条）
@@ -321,21 +338,46 @@ class InfoPanel(QtWidgets.QWidget):
         self.nav.setCurrentRow(0)
         self.stack.setCurrentIndex(0)
         if not s.courses:
+            self.week_nav_widget.hide()
             self.sched_stack.setCurrentWidget(self.sched_view)
             self.sched_view.setHtml(
                 '<p style="color:%s;">还没有导入课表。'
                 '右键菜单 → 课程表 → 导入课表。</p>' % theme.FLOAT_TEXT)
             return
-        week_no = s.week_no()
         if which == "week":
-            # 色块视图：等宽列、高度∝节数、按课程配色
-            self.timetable.set_data(s, week_no)
-            self.sched_stack.setCurrentWidget(self.timetable_area)
+            # 色块视图：等宽列、高度∝节数、按课程配色；默认定位到当前周
+            s_week = s.week_no() or 0
+            self._display_week = s_week if s_week >= 1 else 1
+            self._max_week = max((c.week_end for c in s.courses), default=20)
+            self._render_week()
             return
+        self.week_nav_widget.hide()
+        week_no = s.week_no()
         html = _schedule_html(which, s, week_no)
         self.sched_stack.setCurrentWidget(self.sched_view)
         self.sched_view.setHtml(html)
         self.sched_view.moveCursor(QtGui.QTextCursor.Start)
+
+    # ── 周导航：自由切换上一周/下一周 ────────────────────────────────
+
+    def _render_week(self):
+        s = self.owner.schedule
+        self.timetable.set_data(s, self._display_week)
+        self.sched_stack.setCurrentWidget(self.timetable_area)
+        self.week_nav_widget.show()
+        self.week_label.setText("第 %d 周" % self._display_week)
+        self.btn_prev_week.setEnabled(self._display_week > 1)
+        self.btn_next_week.setEnabled(self._display_week < self._max_week)
+
+    def _prev_week(self):
+        if self._display_week > 1:
+            self._display_week -= 1
+            self._render_week()
+
+    def _next_week(self):
+        if self._display_week < self._max_week:
+            self._display_week += 1
+            self._render_week()
 
     def refresh_tasks(self):
         """从 owner.tasks 重建待办表格。"""
