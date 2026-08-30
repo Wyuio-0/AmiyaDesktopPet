@@ -14,6 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 
 from . import theme
 from .schedule import WEEKDAY_NAMES, _PARITY_LABEL
+from .timetable import TimetableView
 
 PAGE_SCHEDULE = "schedule"
 PAGE_TASKS = "tasks"
@@ -222,7 +223,20 @@ class InfoPanel(QtWidgets.QWidget):
 
         self.sched_view = QtWidgets.QTextBrowser(page)
         self.sched_view.setOpenExternalLinks(False)
-        lay.addWidget(self.sched_view, 1)
+        # 周课表可视化色块视图（可滚动）
+        self.timetable = TimetableView(page)
+        self.timetable_area = QtWidgets.QScrollArea(page)
+        self.timetable_area.setWidget(self.timetable)
+        self.timetable_area.setWidgetResizable(False)
+        self.timetable_area.setFrameShape(QtWidgets.QFrame.NoFrame)
+        self.timetable_area.setStyleSheet(
+            "QScrollArea{background:%s;border:none;}"
+            "QScrollArea>QWidget>QWidget{background:%s;}"
+            % (theme.DLG_BG, theme.DLG_BG))
+        self.sched_stack = QtWidgets.QStackedWidget(page)
+        self.sched_stack.addWidget(self.sched_view)     # 今天 / 下一节
+        self.sched_stack.addWidget(self.timetable_area)  # 本周（色块）
+        lay.addWidget(self.sched_stack, 1)
         return page
 
     def _build_tasks_page(self):
@@ -302,17 +316,24 @@ class InfoPanel(QtWidgets.QWidget):
             self.refresh_tasks()
 
     def show_schedule(self, which):
-        """展示课程表：'today' / 'week' / 'next'（富文本 Markdown 风格列表）。"""
+        """展示课程表：'week' 用可视化色块表，'today'/'next' 用富文本列表。"""
         s = self.owner.schedule
         self.nav.setCurrentRow(0)
         self.stack.setCurrentIndex(0)
         if not s.courses:
+            self.sched_stack.setCurrentWidget(self.sched_view)
             self.sched_view.setHtml(
                 '<p style="color:%s;">还没有导入课表。'
                 '右键菜单 → 课程表 → 导入课表。</p>' % theme.FLOAT_TEXT)
             return
         week_no = s.week_no()
+        if which == "week":
+            # 色块视图：等宽列、高度∝节数、按课程配色
+            self.timetable.set_data(s, week_no)
+            self.sched_stack.setCurrentWidget(self.timetable_area)
+            return
         html = _schedule_html(which, s, week_no)
+        self.sched_stack.setCurrentWidget(self.sched_view)
         self.sched_view.setHtml(html)
         self.sched_view.moveCursor(QtGui.QTextCursor.Start)
 
