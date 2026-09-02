@@ -646,6 +646,33 @@ def _fmt_courses(label, courses, sched, week_no):
     return "%s有 %d 节课：\n%s" % (label, len(courses), "\n".join(parts))
 
 
+def _week_active_text(sched, week_no):
+    """第 week_no 周真正上课的课（学期未开始按第 1 周），按星期列出。
+
+    与 dump_text 的"全量+本周不上标记"不同，这里只列当周活跃课，
+    与信息面板色块周视图的行为一致，避免 week_no=0（未开学）时把
+    整学期课程当成"本周"回答给模型。
+    """
+    eff = week_no if week_no and week_no >= 1 else 1
+    days = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    lines = []
+    if not week_no or week_no < 1:
+        ts = sched.term_start
+        head = "学期尚未开始" + (("（%s 开学）" % ts.isoformat()) if ts else "")
+        lines.append("%s——以下为第 1 周课表：" % head)
+    for wd in range(1, 8):
+        courses = [c for c in sched.courses_on(wd, None)
+                   if c.active_on(eff)]
+        if not courses:
+            continue
+        lines.append(days[wd])
+        for c in courses:
+            lines.append("  " + c.display(sched.sections))
+    if sched.notes:
+        lines.append("网课：" + "；".join(sched.notes))
+    return "\n".join(lines)
+
+
 def query_schedule(scope="today"):
     """查课表：scope ∈ today / tomorrow / week / next。"""
     sched = _schedule_provider() if _schedule_provider else None
@@ -653,7 +680,7 @@ def query_schedule(scope="today"):
         return "还没有导入课表，请右键菜单 → 课程表 → 导入课表。"
     week_no = sched.week_no()
     if scope == "week":
-        return sched.dump_text(week_no=week_no)
+        return _week_active_text(sched, week_no)
     if scope == "tomorrow":
         weekday = datetime.now().isoweekday() % 7 + 1
         return _fmt_courses("明天", sched.courses_on(weekday, week_no),

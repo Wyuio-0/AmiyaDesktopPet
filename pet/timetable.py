@@ -1,16 +1,14 @@
 """课程表周视图：按节次画等宽色块（高度∝课程持续节数，宽度一致）。
 
 每列是一个星期（列序 日一二三四五六），左侧是节次/时间轴；每门课画成
-一个矩形色块，课程名 + 老师 + 教室标在块上。空白节次留白。本周不上
-（周次/单双周不匹配）的课用半透明 + 虚线框弱化显示。
+一个矩形色块，课程名 + 老师 + 教室标在块上。空白节次留白。只画
+第 display_week 周真正上课的课；学期未开始（预览）时显示金色提示。
 """
 
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from . import theme
 
-ROW_H = 30           # 每节课的高度（px，仅作注释参考）
-COL_W = 104          # 每列宽度（px，仅作注释参考）
 RULER_W = 52         # 左侧节次/时间轴宽度（固定）
 HEADER_H = 26        # 顶部星期标题高度（固定）
 MARGIN = 10
@@ -42,7 +40,8 @@ class TimetableView(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self._schedule = None
-        self._week_no = None
+        self._eff_week = 1
+        self._preview_note = False
         self._courses = {}          # weekday -> [Course]
         self._notes = []
         self._color_of = {}         # 课程名 -> QColor（稳定配色）

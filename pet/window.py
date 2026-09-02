@@ -522,7 +522,8 @@ class PetWindow(QtWidgets.QWidget):
 
         已「总是允许」的工具直接放行；否则把弹框请求投递到 GUI 线程，
         用户选允许/拒绝，勾选「不再询问」则持久化到 prefs（perm_<tool>）。
-        30 秒无响应（应用正在退出等极端情况）兜底放行，避免对话卡死。
+        30 秒无响应（应用正在退出等极端情况）兜底**拒绝**——宁可漏执行，
+        不可在用户无法确认时静默放行敏感操作。
         """
         key = "perm_" + name
         if self.prefs.get(key, "") == "allow":
@@ -552,7 +553,7 @@ class PetWindow(QtWidgets.QWidget):
             30000, lambda: loop.quit() if "ok" not in holder else None)
         self.confirm_dialog_requested.emit(lambda: (ask(), loop.quit()))
         loop.exec_()
-        return holder.get("ok", True)
+        return holder.get("ok", False)   # 超时/异常兜底拒绝
 
     def _run_confirm_dialog(self, fn):
         """GUI 线程执行确认框（QueuedConnection 投递过来的回调）。"""

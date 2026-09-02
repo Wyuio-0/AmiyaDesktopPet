@@ -13,7 +13,7 @@ import html as _html
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 from . import theme
-from .schedule import WEEKDAY_NAMES, _PARITY_LABEL
+from .schedule import _PARITY_LABEL
 from .timetable import TimetableView
 
 PAGE_SCHEDULE = "schedule"
@@ -54,7 +54,7 @@ def _course_html(c, sched, week_no=None):
 
 
 def _schedule_html(which, sched, week_no):
-    """课程表三种视图的 HTML：today / week / next（Markdown 风格列表）。"""
+    """今天/下一节的富文本列表（周视图已由色块表 TimetableView 呈现）。"""
     if which == "today":
         courses = sched.today(week_no)
         if not courses:
@@ -62,32 +62,19 @@ def _schedule_html(which, sched, week_no):
                     % theme.FLOAT_TEXT)
         return (_day_head("今天有 %d 节课：" % len(courses))
                 + "".join(_course_html(c, sched, week_no) for c in courses))
-    if which == "next":
-        nxt = sched.next_class()
-        if not nxt:
-            return ('<p style="color:%s;">本周没有剩下的课了，博士可以休息。</p>'
-                    % theme.FLOAT_TEXT)
-        c, _, _, start = nxt
-        mins = int((start - datetime.now()).total_seconds() // 60)
-        where = " @%s" % c.room if c.room else ""
-        return (_day_head("下一节课") + (
-            '<p style="margin:6px 0;color:%s;">%d-%d节 <b>%s</b>  '
-            '%s%s（%d 分钟后）</p>' % (
-                theme.FLOAT_TEXT, c.sec_start, c.sec_end, _esc(c.name),
-                _esc(start.strftime("%H:%M")), _esc(where), mins)))
-    # week —— 完整周课表，按星期分组
-    parts = []
-    for wd in range(1, 8):
-        courses = sched.courses_on(wd, None)
-        if not courses:
-            continue
-        parts.append(_day_head(WEEKDAY_NAMES[wd]))
-        parts.extend(_course_html(c, sched, week_no) for c in courses)
-    if sched.notes:
-        parts.append(_day_head("网课（无固定时间）"))
-        parts.extend('<p style="margin:3px 0;color:%s;">• %s</p>'
-                     % (theme.FLOAT_TEXT, _esc(n)) for n in sched.notes)
-    return "".join(parts)
+    # next
+    nxt = sched.next_class()
+    if not nxt:
+        return ('<p style="color:%s;">本周没有剩下的课了，博士可以休息。</p>'
+                % theme.FLOAT_TEXT)
+    c, _, _, start = nxt
+    mins = int((start - datetime.now()).total_seconds() // 60)
+    where = " @%s" % c.room if c.room else ""
+    return (_day_head("下一节课") + (
+        '<p style="margin:6px 0;color:%s;">%d-%d节 <b>%s</b>  '
+        '%s%s（%d 分钟后）</p>' % (
+            theme.FLOAT_TEXT, c.sec_start, c.sec_end, _esc(c.name),
+            _esc(start.strftime("%H:%M")), _esc(where), mins)))
 
 _QSS = """
 QWidget#PanelRoot { background:%s; color:%s; }
