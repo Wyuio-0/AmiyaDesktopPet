@@ -76,9 +76,12 @@ def scan_names(name_list):
 def scan_staged():
     """扫描暂存区（git diff --cached）。"""
     diff = subprocess.run(["git", "diff", "--cached", "--no-color"],
-                          capture_output=True, text=True).stdout
-    names = subprocess.run(["git", "diff", "--cached", "--name-only"],
-                           capture_output=True, text=True).stdout.splitlines()
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace").stdout or ""
+    names_out = subprocess.run(["git", "diff", "--cached", "--name-only"],
+                               capture_output=True, text=True,
+                               encoding="utf-8", errors="replace").stdout or ""
+    names = names_out.splitlines()
     return scan_content(diff) + scan_names(names)
 
 

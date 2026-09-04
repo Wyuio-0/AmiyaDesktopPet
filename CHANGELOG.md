@@ -49,6 +49,15 @@
   spec 不再把角色打进 `_internal\`，CI 构建后显式同步到 exe 旁（本地 build.ps1
   同路径），安装包/zip 体积直接减少约 40%
 
+### 变更
+
+- **PetWindow 关注点分离 (SoC) 重构**：将原 2174 行的 `PetWindow` 上帝类按单一职责原则拆解为 4 个独立协调器：
+  - `PetTrayCoordinator`（`pet/tray.py`）：系统托盘管理与关闭拦截
+  - `PetContextMenuBuilder`（`pet/menu.py`）：右键菜单组装与角色缓存懒加载
+  - `PetFocusToolsManager`（`pet/focus.py`）：番茄钟、倒计时、课表提醒、待办考试徽章与定时问候
+  - `PetInputController`（`pet/input_controller.py`）：输入框、语音气泡与打字机流式动效
+  主窗口精简至 1166 行，保留全部门面属性与方法，100% 保持向后兼容。
+
 ### 修复
 
 - AI 查课表「本周」与视觉版一致：只列当周真正上课的课，学期未开始时按第 1 周
